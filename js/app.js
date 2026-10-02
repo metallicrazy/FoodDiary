@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.9.0';
+  const APP_VERSION = '1.9.2';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -719,14 +719,14 @@ const UI = (() => {
     const latest = Store.latestWeight();
     const todayW = s.weights.find((w) => w.date === todayKey);
     $('#weightInput').value = '';
-    $('#weightInput').placeholder = latest ? `Enter today's weight (last ${fmt(latest.kg, 1)} kg)` : 'Enter your weight in kg';
+    $('#weightInput').placeholder = "Enter today's weight";
     $('#weightTodayNote').textContent = todayW ? `Today's reading: ${fmt(todayW.kg, 1)} kg — logging again replaces it.` : 'One reading per day — weigh in at the same time each day, ideally first thing.';
     $('#logWeightBtn').textContent = todayW ? 'Update today' : 'Log today';
     updateWeightButton();
     const startKg = s.profile.startWeightKg || (s.weights[0] && s.weights[0].kg) || null;
     const change = startKg && latest ? Math.round((latest.kg - startKg) * 10) / 10 : null;
     const b = Nutrition.bmi(latest && latest.kg, s.profile.heightCm);
-    $('#weightKpis').innerHTML = `<div class="kpi"><b>${startKg ? fmt(startKg, 1) : '–'}</b><small>start kg</small></div><div class="kpi"><b>${latest ? fmt(latest.kg, 1) : '–'}</b><small>now kg</small></div><div class="kpi ${change === null ? '' : change < 0 ? 'good' : change > 0 ? 'bad' : ''}"><b>${change === null ? '–' : (change > 0 ? '+' : '') + fmt(change, 1)}</b><small>since start</small></div>`;
+    $('#weightKpis').innerHTML = `<div class="kpi"><b>${startKg ? fmt(startKg, 1) : '–'}</b><small>start kg</small></div><div class="kpi"><b>${latest ? fmt(latest.kg, 1) : '–'}</b><small>now kg</small></div><div class="kpi ${change === null ? '' : change < 0 ? 'good' : change > 0 ? 'bad' : ''}"><b>${change === null ? '–' : (change > 0 ? '+' : '') + fmt(change, 1)}</b><small>kg since start</small></div>`;
     if (b) {
       const h = s.profile.heightCm, m2 = (h / 100) ** 2, kg = latest.kg;
       const LO = 12, HI = 40, pct = (v) => Math.max(0, Math.min(100, ((v - LO) / (HI - LO)) * 100));
