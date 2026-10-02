@@ -1,6 +1,6 @@
 # FoodDiary
 
-**Current version: 1.9.2** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
+**Current version: 1.9.3** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
 
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
@@ -69,6 +69,10 @@ then upload the new `data/cofid.json` and bump `VERSION` in `sw.js`.
 - Libraries (loaded from CDN, cached for offline use): [Chart.js](https://www.chartjs.org/), [html5-qrcode](https://github.com/mebjas/html5-qrcode), [Tesseract.js](https://tesseract.projectnaptha.com/), [SheetJS](https://sheetjs.com/) (import only).
 - Targets use the Mifflin–St Jeor equation with standard activity multipliers. This is a personal tool, not medical advice.
 
+## Continuing development
+
+See **`HANDOVER.md`** — it records the product decisions, data model, release routine and testing approach so a developer or AI assistant can pick the project up cold.
+
 ## Project layout
 
 ```
@@ -80,6 +84,7 @@ js/sources.js         Open Food Facts API, CoFID search, custom foods, recipes
 js/app.js             UI: diary, search, scanner, OCR, recipes, charts, settings, backup
 sw.js                 service worker (offline shell, cached libraries & product images)
 manifest.webmanifest  PWA manifest · icons/ · data/cofid.json · tools/build_cofid.py
+HANDOVER.md           decisions, data model, release routine, testing notes (for whoever continues the work)
 ```
 
 ## Troubleshooting updates
