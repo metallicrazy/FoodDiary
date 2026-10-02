@@ -117,6 +117,21 @@
     <main id="view-progress" class="view" data-view="progress">
       <header class="topbar"><h1>Progress</h1></header>
       <section class="card">
+        <div class="card-head"><h3>Weight</h3>
+          <select id="weightRange" class="select-sm"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="365">1 year</option><option value="0">All</option></select>
+        </div>
+        <div class="weight-log">
+          <input type="number" id="weightInput" step="0.1" min="20" max="400" inputmode="decimal" placeholder="kg">
+          <button class="btn primary" id="logWeightBtn">Log today</button>
+        </div>
+        <div class="chart-wrap"><canvas id="weightChart"></canvas></div>
+        <div class="kpis" id="weightKpis"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h3>BMI</h3></div>
+        <div id="bmiCard" class="bmi standalone"></div>
+      </section>
+      <section class="card">
         <div class="card-head">
           <h3>Calories this week</h3>
           <div class="week-nav"><button class="icon-btn" id="prevWeek">‹</button><span id="weekLabel"></span><button class="icon-btn" id="nextWeek">›</button></div>
@@ -133,18 +148,6 @@
           <span><i style="background:var(--fat)"></i>Fat</span>
         </div>
       </section>
-      <section class="card">
-        <div class="card-head"><h3>Weight</h3>
-          <select id="weightRange" class="select-sm"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="365">1 year</option><option value="0">All</option></select>
-        </div>
-        <div class="weight-log">
-          <input type="number" id="weightInput" step="0.1" min="20" max="400" inputmode="decimal" placeholder="kg">
-          <button class="btn primary" id="logWeightBtn">Log today</button>
-        </div>
-        <div class="chart-wrap"><canvas id="weightChart"></canvas></div>
-        <div class="kpis" id="weightKpis"></div>
-        <div id="bmiCard" class="bmi"></div>
-      </section>
     </main>
 
     <!-- ================= ME ================= -->
@@ -158,10 +161,11 @@
           </label>
           <label>Age<input type="number" id="pAge" min="10" max="120" inputmode="numeric" placeholder="years"></label>
           <label>Height<input type="number" id="pHeight" min="100" max="250" inputmode="numeric" placeholder="cm"></label>
-          <label>Weight<input type="number" id="pWeight" min="20" max="400" step="0.1" inputmode="decimal" placeholder="kg"></label>
+          <label>Starting weight<input type="number" id="pWeight" min="20" max="400" step="0.1" inputmode="decimal" placeholder="kg"></label>
           <label class="span2">Activity<select id="pActivity"></select></label>
           <label class="span2">Goal<select id="pGoal"></select></label>
         </div>
+        <div class="weight-info" id="weightInfo"></div>
       </section>
       <section class="card">
         <div class="card-head"><h3>Daily targets</h3>
@@ -189,12 +193,12 @@
       </section>
       <section class="card">
         <h3>UK food database</h3>
-        <p class="muted small" id="cofidStatus"></p>
-        <div class="row-btns">
+        <p class="small" id="cofidStatus"></p>
+        <details class="small muted">
+          <summary>Import a newer version</summary>
+          <p>If GOV.UK publishes an updated <a href="https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid" target="_blank" rel="noopener">CoFID spreadsheet</a>, you can import it here to replace the built-in copy on this device.</p>
           <label class="btn ghost file-btn">Import CoFID spreadsheet<input type="file" id="cofidFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>
-          <a class="btn ghost" href="https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid" target="_blank" rel="noopener">Download from GOV.UK ↗</a>
-        </div>
-        <p class="muted small">Download “McCance and Widdowson's composition of foods integrated dataset” (Excel) from GOV.UK, then import it here. It's stored on this device for offline search of ~2,900 generic UK foods.</p>
+        </details>
       </section>
       <section class="card">
         <h3>Backup</h3>

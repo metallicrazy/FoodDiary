@@ -3,11 +3,11 @@
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
 - **Barcode scanning** with the phone camera (or type the number) → product name, photo, calories and macros from **Open Food Facts** (3.5M+ products, strong UK coverage).
-- **UK generic foods** (fruit, veg, meat, cooked dishes) from the UK government's **CoFID / McCance & Widdowson** dataset, searchable offline.
+- **UK generic foods** (2,854 items — fruit, veg, meat, cooked dishes) from the UK government's **CoFID / McCance & Widdowson** dataset, built in and searchable offline.
 - **Custom foods from a photo of the nutrition label** — on-device text recognition pre-fills the form, you check and save.
 - **Recipes** — build from a food search or pick items straight from your diary (any day in the last week) with the amounts you logged; favourites, recents, copy-yesterday.
 - **Daily targets** (calories, protein, carbs, fat) calculated from your profile (Mifflin–St Jeor) or set manually. Diet-style presets — **Low carb** (default), **Balanced**, **Keto** with a carb-limit slider (10–50 g). Change calories and the macros rescale to keep the same split; edit one macro and the other two adjust to fit. Every change shows **Saved ✓**.
-- **Healthy weight**: BMI card shows your healthy weight range for your height and how many kg to lose (or gain) to reach it.
+- **BMI & target weight**: colour-coded BMI scale with the matching weights for your height along the top, a settable target BMI (default 24.9) and how many kg to lose to reach it.
 - **Progress charts**: weekly calories vs target, macros, body weight trend and BMI.
 - **Private by design** — everything stays on your phone. One-tap backup file you can save to OneDrive; restore on a new device.
 - Follows your phone's light/dark setting.
@@ -40,24 +40,16 @@ Upload the changed files again (Add file → Upload files, same names overwrite)
 
 ---
 
-## 2 · Add the UK food database (optional but recommended)
+## 2 · UK food database
 
-Open Food Facts covers packaged products. For fresh/unpackaged foods ("banana, raw", "chicken breast, grilled") import the free UK dataset:
+The UK government's CoFID dataset (2,854 generic foods — fruit, veg, meat, fish, cooked dishes, drinks) is **built in** as `data/cofid.json`, so every device gets it automatically and it works offline.
 
-**Easiest — on the phone or laptop, inside the app:**
-1. Download *McCance and Widdowson's composition of foods integrated dataset* (Excel, ~4 MB) from  
-   <https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid>
-2. In FoodDiary go to **Me → UK food database → Import CoFID spreadsheet** and pick the file.  
-   ~2,900 foods are stored on the device for offline search. Repeat on each device you use.
-
-**Alternative — bundle it in the repo so every device gets it automatically:**
+If GOV.UK publishes a newer spreadsheet, either import it on the device (**Me → UK food database → Import a newer version**) or regenerate the bundled file:
 ```bash
 pip install openpyxl
 python tools/build_cofid.py "McCance_Widdowsons_Composition_of_Foods_Integrated_Dataset_2021.xlsx"
 ```
-This writes `data/cofid.json`. Upload that file to the repo (replacing the empty placeholder) and bump `VERSION` in `sw.js`.
-
----
+then upload the new `data/cofid.json` and bump `VERSION` in `sw.js`.
 
 ## 3 · Tips
 

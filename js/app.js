@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.3.0';
+  const APP_VERSION = '1.7.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -321,7 +321,7 @@ const UI = (() => {
     let html = '';
     if (fav.length) html += `<div class="group-title">Favourites</div><div class="list">${fav.map(foodRow).join('')}</div>`;
     if (rec.length) html += `<div class="group-title">Recent</div><div class="list">${rec.map(foodRow).join('')}</div>`;
-    if (!html) html = `<div class="empty"><div class="empty-icon">🔍</div><p>Search ${Sources.cofidCount() ? 'thousands of UK foods and ' : ''}millions of barcoded products, or scan a barcode.</p>${!Sources.cofidCount() ? '<p class="small">Tip: import the free UK food database in <b>Me</b> for fruit, veg and fresh foods without barcodes.</p>' : ''}</div>`;
+    if (!html) html = `<div class="empty"><div class="empty-icon">🔍</div><p>Search ${Sources.cofidCount() ? 'thousands of UK foods and ' : ''}millions of barcoded products, or scan a barcode.</p></div>`;
     $('#addContent').innerHTML = html; bindFoodRows();
   }
   function renderResults(q, { offPending = false, offError = null } = {}) {
@@ -718,30 +718,49 @@ const UI = (() => {
     const pts = s.weights.filter((w) => w.date >= from);
     const latest = Store.latestWeight();
     $('#weightInput').placeholder = latest ? `${latest.kg} kg` : 'kg';
+    
     const todayW = s.weights.find((w) => w.date === todayKey);
     if (todayW) $('#weightInput').value = todayW.kg;
-    const first = pts[0], lastP = pts[pts.length - 1];
-    const change = first && lastP && first !== lastP ? lastP.kg - first.kg : null;
+    const startKg = s.profile.startWeightKg || (s.weights[0] && s.weights[0].kg) || null;
+    const change = startKg && latest ? Math.round((latest.kg - startKg) * 10) / 10 : null;
     const b = Nutrition.bmi(latest && latest.kg, s.profile.heightCm);
-    $('#weightKpis').innerHTML = `<div class="kpi"><b>${latest ? fmt(latest.kg, 1) : '–'}</b><small>latest kg</small></div><div class="kpi"><b>${change === null ? '–' : (change > 0 ? '+' : '') + fmt(change, 1)}</b><small>change (kg)</small></div><div class="kpi"><b>${pts.length}</b><small>entries</small></div>`;
+    $('#weightKpis').innerHTML = `<div class="kpi"><b>${startKg ? fmt(startKg, 1) : '–'}</b><small>start kg</small></div><div class="kpi"><b>${latest ? fmt(latest.kg, 1) : '–'}</b><small>now kg</small></div><div class="kpi ${change === null ? '' : change < 0 ? 'good' : change > 0 ? 'bad' : ''}"><b>${change === null ? '–' : (change > 0 ? '+' : '') + fmt(change, 1)}</b><small>since start</small></div>`;
     if (b) {
-      const pos = Math.max(2, Math.min(98, ((b - 12) / (40 - 12)) * 100));
-      const hr = Nutrition.healthyWeightRange(s.profile.heightCm);
-      const kg = latest.kg;
+      const h = s.profile.heightCm, m2 = (h / 100) ** 2, kg = latest.kg;
+      const LO = 12, HI = 40, pct = (v) => Math.max(0, Math.min(100, ((v - LO) / (HI - LO)) * 100));
+      const kgAt = (bmiV) => Math.round(bmiV * m2 * 10) / 10;
+      const targetBmi = s.profile.targetBmi || 24.9;
+      const targetKg = kgAt(targetBmi);
+      const diff = Math.round((kg - targetKg) * 10) / 10;
       let msg;
-      if (kg > hr.max) msg = `Lose <b>${fmt(kg - hr.max, 1)} kg</b> to reach a healthy BMI (${fmt(hr.max, 1)} kg).`;
-      else if (kg < hr.min) msg = `Gain <b>${fmt(hr.min - kg, 1)} kg</b> to reach a healthy BMI (${fmt(hr.min, 1)} kg).`;
-      else msg = `You're in the healthy range — <b>${fmt(hr.max - kg, 1)} kg</b> of headroom before BMI 25.`;
+      if (diff > 0.05) msg = `Lose <b>${fmt(diff, 1)} kg</b> to reach target BMI of ${targetBmi} (${fmt(targetKg, 1)} kg).`;
+      else if (diff < -0.05) msg = `You're <b>${fmt(-diff, 1)} kg</b> under your target BMI of ${targetBmi} (${fmt(targetKg, 1)} kg).`;
+      else msg = `You're right on your target BMI of ${targetBmi} (${fmt(targetKg, 1)} kg).`;
+      const marks = [[18.5, 'edge'], [22, 'mid'], [25, 'edge'], [30, 'edge'], [40, 'end']];
       $('#bmiCard').innerHTML = `
         <div class="bmi-top">
           <div><div class="bmi-val">${b}</div><div class="muted small">BMI</div></div>
-          <div style="flex:1"><div class="bmi-cat">${Nutrition.bmiCategory(b)}</div><div class="bmi-scale"><i style="left:${pos}%"></i></div></div>
+          <div style="flex:1"><div class="bmi-cat">${Nutrition.bmiCategory(b)}</div><div class="muted small">${fmt(kg, 1)} kg · ${fmt(h)} cm</div></div>
+          <label class="bmi-target">Target BMI<input type="number" id="targetBmi" step="0.1" min="15" max="35" inputmode="decimal" value="${targetBmi}"></label>
         </div>
-        <div class="bmi-msg">${msg}</div>
-        <div class="bmi-grid" style="width:100%">
-          <div><b>${fmt(hr.min, 1)} – ${fmt(hr.max, 1)} kg</b><small>healthy weight range for ${fmt(s.profile.heightCm)} cm (BMI 18.5–24.9)</small></div>
-          <div><b>${fmt(hr.mid, 1)} kg</b><small>middle of the range (BMI 22)</small></div>
-        </div>`;
+        <div class="bmi-scale-wrap">
+          <div class="bmi-labels top">${marks.map(([v, k]) => `<span class="${k}" style="left:${pct(v)}%">${fmt(kgAt(v), 1)}<small>kg</small></span>`).join('')}</div>
+          <div class="bmi-scale">
+            <i class="me" style="left:${pct(b)}%" title="You: BMI ${b}"></i>
+            <i class="tgt" style="left:${pct(targetBmi)}%" title="Target BMI ${targetBmi}"></i>
+          </div>
+          <div class="bmi-labels bottom">${marks.map(([v, k]) => `<span class="${k}" style="left:${pct(v)}%">${v}</span>`).join('')}</div>
+        </div>
+        <div class="legend bmi-key">
+          <span><i style="background:#60a5fa"></i>Underweight &lt;18.5</span><span><i style="background:#34d399"></i>Healthy 18.5–24.9</span><span><i style="background:#fbbf24"></i>Overweight 25–29.9</span><span><i style="background:#f87171"></i>Obese 30+</span>
+        </div>
+        <div class="legend bmi-key"><span><i class="dot me"></i>You</span><span><i class="dot tgt"></i>Target</span></div>
+        <div class="bmi-msg">${msg}</div>`;
+      $('#targetBmi').addEventListener('change', (e) => {
+        const v = parseFloat(e.target.value);
+        if (!v || v < 15 || v > 35) { toast('Target BMI should be between 15 and 35'); renderWeight(col); return; }
+        s.profile.targetBmi = Math.round(v * 10) / 10; Store.save(); toast(`Target BMI saved (${s.profile.targetBmi})`, 1400); renderWeight(col);
+      });
     } else $('#bmiCard').innerHTML = `<div class="muted small">Add your height in <b>Me</b> and log a weight to see your BMI and healthy weight range.</div>`;
     draw('weightChart', {
       type: 'line',
@@ -775,7 +794,20 @@ const UI = (() => {
     const s = Store.state, p = s.profile, T = s.targets;
     const fill = (sel, obj) => { $(sel).innerHTML = Object.entries(obj).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join(''); };
     fill('#pActivity', Nutrition.ACTIVITY); fill('#pGoal', Nutrition.GOALS);
-    $('#pSex').value = p.sex; $('#pAge').value = p.age ?? ''; $('#pHeight').value = p.heightCm ?? ''; $('#pWeight').value = p.weightKg ?? ''; $('#pActivity').value = p.activity; $('#pGoal').value = p.goal;
+    $('#pSex').value = p.sex; $('#pAge').value = p.age ?? ''; $('#pHeight').value = p.heightCm ?? ''; $('#pActivity').value = p.activity; $('#pGoal').value = p.goal;
+    const locked = !!p.startWeightKg;
+    $('#pWeight').value = p.startWeightKg ?? ''; $('#pWeight').disabled = locked; $('#pWeight').placeholder = 'kg';
+    const latest = Store.latestWeight();
+    const fmtDate = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
+    $('#weightInfo').innerHTML = locked
+      ? `<div><span class="muted">Started</span> <b>${fmt(p.startWeightKg, 1)} kg</b> <span class="muted">on ${fmtDate(p.startDate)}</span> · <button class="link-btn inline" id="correctStart">Correct</button></div>
+         <div><span class="muted">Current</span> <b>${fmt(latest.kg, 1)} kg</b> <span class="muted">logged ${fmtDate(latest.date)}</span> · <button class="link-btn inline" data-goto="progress">Log weight in Progress</button></div>
+         <div class="muted small">Calorie targets follow your current weight.</div>`
+      : `<div class="muted small">Enter your weight once here – it's locked in as your first reading. After that, log new weights in <b>Progress</b>.</div>`;
+    if (locked) $('#correctStart').addEventListener('click', () => {
+      if (!confirm(`Correct your starting weight? This changes your first reading (${fmt(p.startWeightKg, 1)} kg on ${fmtDate(p.startDate)}).`)) return;
+      $('#pWeight').disabled = false; $('#pWeight').focus(); $('#pWeight').select();
+    });
     $('#tAuto').checked = T.auto;
     $('#tKcal').value = T.kcal; $('#tProtein').value = T.protein; $('#tCarbs').value = T.carbs; $('#tFat').value = T.fat;
     $('#tKcal').disabled = T.auto;
@@ -793,13 +825,14 @@ const UI = (() => {
     $('#targetsNote').textContent = T.preset === 'custom'
       ? `Custom split. Change calories and the macros scale to keep this split; edit one macro and the other two adjust to fit. Macros add up to ${fmt(mk)} kcal.`
       : `${Nutrition.PRESETS[T.preset].label} split applied to ${fmt(T.kcal)} kcal. Edit any macro to make it custom.`;
-    $('#cofidStatus').innerHTML = Sources.cofidCount() ? `✅ ${fmt(Sources.cofidCount())} UK foods available offline${s.cofidLoadedAt ? ' (imported ' + new Date(s.cofidLoadedAt).toLocaleDateString('en-GB') + ')' : ''}.` : 'Not imported yet – generic foods (fruit, veg, meat, cooked dishes) won\'t appear in search until you import the dataset.';
+    $('#cofidStatus').innerHTML = Sources.cofidCount() ? `✅ <b>${fmt(Sources.cofidCount())} UK foods</b> built in (McCance &amp; Widdowson CoFID 2021)${s.cofidLoadedAt ? ' – replaced by your import on ' + new Date(s.cofidLoadedAt).toLocaleDateString('en-GB') : ''}. Searchable offline alongside barcoded products.` : '<span class="spinner"></span> Loading the UK food database…';
   }
   function readProfile() {
     const p = Store.state.profile;
-    p.sex = $('#pSex').value; p.age = parseInt($('#pAge').value, 10) || null; p.heightCm = parseFloat($('#pHeight').value) || null; p.weightKg = parseFloat($('#pWeight').value) || null; p.activity = $('#pActivity').value; p.goal = $('#pGoal').value;
+    p.sex = $('#pSex').value; p.age = parseInt($('#pAge').value, 10) || null; p.heightCm = parseFloat($('#pHeight').value) || null; p.activity = $('#pActivity').value; p.goal = $('#pGoal').value;
     Store.state.onboarded = true;
-    if (p.weightKg && !Store.state.weights.length) Store.state.weights.push({ date: Nutrition.dateKey(new Date()), kg: p.weightKg });
+    const sw = parseFloat($('#pWeight').value);
+    if (sw && sw >= 20 && sw <= 400 && (!p.startWeightKg || sw !== p.startWeightKg)) Store.setStartWeight(Math.round(sw * 10) / 10, Nutrition.dateKey(new Date()));
     if (Store.state.targets.auto) recalcTargets();
     Store.save(); renderMe(); showSaved('Profile saved');
   }

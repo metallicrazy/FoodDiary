@@ -5,7 +5,7 @@ const Store = (() => {
 
   const defaults = () => ({
     version: 1,
-    profile: { name: '', sex: 'male', age: null, heightCm: null, weightKg: null, activity: 'light', goal: 'maintain' },
+    profile: { name: '', sex: 'male', age: null, heightCm: null, weightKg: null, activity: 'light', goal: 'maintain', targetBmi: 24.9, startWeightKg: null, startDate: null },
     targets: { kcal: 2000, protein: 175, carbs: 100, fat: 100, auto: true, preset: 'lowcarb', ketoCarbs: 25 },
     diary: {},          // dateKey -> [entry]
     weights: [],        // [{ date, kg }]
@@ -29,6 +29,7 @@ const Store = (() => {
       const merged = Object.assign(d, parsed);
       merged.targets = Object.assign(defaults().targets, parsed.targets || {});
       merged.profile = Object.assign(defaults().profile, parsed.profile || {});
+      if (!merged.profile.startWeightKg && merged.weights && merged.weights.length) { merged.profile.startWeightKg = merged.weights[0].kg; merged.profile.startDate = merged.weights[0].date; }
       return merged;
     } catch (e) {
       console.warn('State load failed, starting fresh', e);
@@ -137,7 +138,19 @@ const Store = (() => {
     state.weights = state.weights.filter((w) => w.date !== dateKey);
     state.weights.push({ date: dateKey, kg });
     state.weights.sort((a, b) => a.date.localeCompare(b.date));
-    state.profile.weightKg = kg;
+    state.profile.weightKg = state.weights[state.weights.length - 1].kg; // current weight = latest reading
+    if (state.profile.startDate === dateKey) state.profile.startWeightKg = kg; // same day as the start: it IS the starting reading
+    save();
+  }
+  // Starting weight: set once, becomes the first reading. Re-setting (a correction) rewrites that first reading.
+  function setStartWeight(kg, dateKey) {
+    const p = state.profile;
+    if (p.startWeightKg && p.startDate) state.weights = state.weights.filter((w) => w.date !== p.startDate);
+    p.startWeightKg = kg; p.startDate = p.startDate || dateKey;
+    state.weights = state.weights.filter((w) => w.date !== p.startDate);
+    state.weights.push({ date: p.startDate, kg });
+    state.weights.sort((a, b) => a.date.localeCompare(b.date));
+    p.weightKg = state.weights[state.weights.length - 1].kg;
     save();
   }
   function latestWeight() { return state.weights.length ? state.weights[state.weights.length - 1] : null; }
@@ -164,6 +177,6 @@ const Store = (() => {
     entries, addEntry, updateEntry, removeEntry,
     pushRecent, toggleFavourite, isFavourite, slimFood,
     saveCustomFood, deleteCustomFood, saveRecipe, deleteRecipe,
-    logWeight, latestWeight, exportJSON, importJSON, reset, uid
+    logWeight, setStartWeight, latestWeight, exportJSON, importJSON, reset, uid
   };
 })();

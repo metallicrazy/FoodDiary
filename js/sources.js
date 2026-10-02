@@ -11,15 +11,19 @@ const Sources = (() => {
 
   /* ---------- CoFID ---------- */
   async function loadCofid() {
-    // 1) previously imported copy in IndexedDB
-    let data = await Store.kvGet('cofid');
-    // 2) bundled data/cofid.json
-    if (!data || !data.length) {
+    let data = null;
+    // 1) a newer file the user imported on this device
+    const imported = await Store.kvGet('cofid-imported');
+    if (imported && imported.length) data = imported;
+    // 2) the dataset bundled with the app (also cached by the service worker for offline use)
+    if (!data) {
       try {
-        const r = await fetch('data/cofid.json', { cache: 'no-cache' });
-        if (r.ok) { const j = await r.json(); if (Array.isArray(j) && j.length) { data = j; await Store.kvSet('cofid', j); } }
-      } catch (e) { /* offline or missing */ }
+        const r = await fetch('data/cofid.json');
+        if (r.ok) { const j = await r.json(); if (Array.isArray(j) && j.length) data = j; }
+      } catch (e) { /* offline and not yet cached */ }
     }
+    // 3) last resort: an older cached copy
+    if (!data) { const cached = await Store.kvGet('cofid'); if (cached && cached.length) data = cached; }
     setCofid(data || []);
     return cofid.length;
   }
@@ -34,7 +38,7 @@ const Sources = (() => {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: '' });
     const foods = Nutrition.parseCofidRows(rows);
     if (!foods.length) throw new Error('Could not find food rows in the "Proximates" sheet.');
-    await Store.kvSet('cofid', foods);
+    await Store.kvSet('cofid-imported', foods);
     Store.state.cofidLoadedAt = new Date().toISOString();
     Store.save();
     setCofid(foods);

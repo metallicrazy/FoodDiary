@@ -193,8 +193,26 @@ textarea { height: auto; padding: 10px 12px; }
 .bmi { margin-top: 12px; display: flex; align-items: center; gap: 14px; background: var(--card-2); border-radius: 14px; padding: 12px 14px; }
 .bmi .bmi-val { font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
 .bmi .bmi-cat { font-weight: 700; }
-.bmi-scale { flex: 1; height: 8px; border-radius: 99px; background: linear-gradient(90deg, #60a5fa 0 18%, #34d399 18% 50%, #fbbf24 50% 70%, #f87171 70%); position: relative; }
-.bmi-scale i { position: absolute; top: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--text); border: 3px solid var(--card); transform: translateX(-50%); }
+/* BMI scale: 12–40. Boundaries 18.5 → 23.2%, 25 → 46.4%, 30 → 64.3% */
+.bmi-scale-wrap { width: 100%; margin: 6px 0 2px; }
+.bmi-scale { height: 12px; border-radius: 99px; background: linear-gradient(90deg, #60a5fa 0 23.2%, #34d399 23.2% 46.4%, #fbbf24 46.4% 64.3%, #f87171 64.3%); position: relative; }
+.bmi-scale i { position: absolute; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); }
+.bmi-scale i.me { width: 20px; height: 20px; background: var(--text); border: 3px solid var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.35); z-index: 2; }
+.bmi-scale i.tgt { width: 4px; height: 20px; border-radius: 2px; background: var(--card); outline: 1.5px solid var(--text); z-index: 1; }
+.bmi-labels { position: relative; height: 22px; font-size: 11px; color: var(--muted); }
+.bmi-labels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.bmi-labels span.end { transform: translateX(-100%); }
+.bmi-labels.top span { bottom: 0; font-weight: 700; color: var(--text); }
+.bmi-labels.top span small { font-weight: 500; color: var(--muted); margin-left: 1px; }
+.bmi-labels.top span.mid { color: var(--muted); font-weight: 600; }
+.bmi-labels.bottom span { top: 2px; }
+.bmi-labels.bottom span.mid { display: none; }
+.bmi-key { flex-wrap: wrap; justify-content: flex-start; gap: 6px 12px; margin-top: 6px; }
+.bmi-key .dot { border-radius: 50%; width: 10px; height: 10px; }
+.bmi-key .dot.me { background: var(--text); }
+.bmi-key .dot.tgt { background: var(--card); outline: 1.5px solid var(--text); border-radius: 2px; width: 4px; }
+.bmi-target { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); font-weight: 600; flex: none; }
+.bmi-target input { width: 74px; height: 36px; text-align: center; font-weight: 700; }
 
 /* Tab bar */
 .tabbar { position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--tab-h) + var(--sab)); padding-bottom: var(--sab); background: var(--card); background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: saturate(180%) blur(16px); -webkit-backdrop-filter: saturate(180%) blur(16px); border-top: 1px solid var(--line); display: flex; justify-content: space-around; z-index: 20; }
@@ -286,7 +304,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; }
 .bmi-grid small { color: var(--muted); font-size: 11px; }
 .bmi { flex-wrap: wrap; }
 .bmi .bmi-top { display: flex; align-items: center; gap: 14px; width: 100%; }
-.bmi .bmi-msg { width: 100%; font-size: 14px; margin-top: 4px; }
+.bmi .bmi-msg { width: 100%; font-size: 15px; margin-top: 8px; }
 
 /* Selectable rows (diary picker) */
 .item.selectable { position: relative; }
@@ -295,3 +313,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; }
 .item.selectable.selected .check { background: var(--accent); border-color: var(--accent); }
 .item.selectable.selected .check::after { content: "✓"; color: var(--accent-ink); font-size: 14px; font-weight: 800; }
 .chip small { font-weight: 500; opacity: .7; }
+
+.bmi.standalone { background: none; padding: 0; margin-top: 0; }
+
+.weight-info { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; background: var(--card-2); border-radius: 14px; padding: 10px 12px; }
+.weight-info .link-btn.inline { padding: 0; font-size: 14px; }
+.kpi.good b { color: var(--accent); }
+.kpi.bad b { color: var(--danger); }
+input:disabled { opacity: .6; }
