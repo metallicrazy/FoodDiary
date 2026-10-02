@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>FoodDiary</title>
+  <meta name="description" content="Food diary & calorie tracker with UK barcode lookup">
+  <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FoodDiary">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- ================= TODAY ================= -->
+    <main id="view-today" class="view active" data-view="today">
+      <header class="topbar">
+        <button class="icon-btn" id="prevDay" aria-label="Previous day">‹</button>
+        <div class="date-title" id="dateTitle">
+          <span id="dateLabel">Today</span>
+          <small id="dateSub"></small>
+          <input type="date" id="datePicker" aria-label="Pick a date">
+        </div>
+        <button class="icon-btn" id="nextDay" aria-label="Next day">›</button>
+      </header>
+
+      <section class="card hero">
+        <div class="ring-wrap">
+          <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+            <circle class="ring-fg" id="kcalRing" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="ring-center">
+            <div class="ring-value" id="kcalLeft">0</div>
+            <div class="ring-label" id="kcalLeftLabel">kcal left</div>
+          </div>
+        </div>
+        <div class="hero-side">
+          <div class="stat"><span class="stat-label">Eaten</span><span class="stat-value" id="kcalEaten">0</span></div>
+          <div class="stat"><span class="stat-label">Target</span><span class="stat-value" id="kcalTarget">0</span></div>
+        </div>
+        <div class="macros">
+          <div class="macro" data-m="protein">
+            <div class="macro-head"><span>Protein</span><span class="macro-left" id="proteinLeft"></span></div>
+            <div class="bar"><div class="bar-fill" id="proteinBar"></div></div>
+            <div class="macro-sub" id="proteinSub"></div>
+          </div>
+          <div class="macro" data-m="carbs">
+            <div class="macro-head"><span>Carbs</span><span class="macro-left" id="carbsLeft"></span></div>
+            <div class="bar"><div class="bar-fill" id="carbsBar"></div></div>
+            <div class="macro-sub" id="carbsSub"></div>
+          </div>
+          <div class="macro" data-m="fat">
+            <div class="macro-head"><span>Fat</span><span class="macro-left" id="fatLeft"></span></div>
+            <div class="bar"><div class="bar-fill" id="fatBar"></div></div>
+            <div class="macro-sub" id="fatSub"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Food log</h2>
+          <button class="link-btn" id="copyYesterday">Copy yesterday</button>
+        </div>
+        <div id="entryList" class="list"></div>
+        <div id="emptyToday" class="empty hidden">
+          <div class="empty-icon">🍽️</div>
+          <p>Nothing logged yet.</p>
+          <button class="btn primary" data-goto="add">Add food</button>
+        </div>
+      </section>
+      <div class="banner hidden" id="setupBanner">
+        <div><strong>Personalise your targets</strong><br><small>Add your height, weight and goal so FoodDiary can calculate your daily calories.</small></div>
+        <button class="btn small" data-goto="me">Set up</button>
+      </div>
+      <div class="banner hidden" id="installBanner">
+        <div><strong>Install FoodDiary</strong><br><small id="installHint">Tap <span class="share-glyph">⎙</span> Share, then “Add to Home Screen”.</small></div>
+        <button class="icon-btn" id="dismissInstall" aria-label="Dismiss">✕</button>
+      </div>
+    </main>
+
+    <!-- ================= ADD ================= -->
+    <main id="view-add" class="view" data-view="add">
+      <header class="topbar"><h1>Add food</h1></header>
+      <div class="searchbar">
+        <div class="search-input">
+          <span class="search-icon">⌕</span>
+          <input type="search" id="searchInput" placeholder="Search foods, brands or type a barcode" autocomplete="off" enterkeyhint="search">
+          <button class="clear-btn hidden" id="clearSearch" aria-label="Clear">✕</button>
+        </div>
+        <button class="btn icon-only accent" id="scanBtn" aria-label="Scan barcode" title="Scan barcode">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M11 8v8M14 8v8M17 8v8"/></svg>
+        </button>
+      </div>
+      <div class="chips" id="addTabs">
+        <button class="chip active" data-tab="results">Results</button>
+        <button class="chip" data-tab="recents">Recents</button>
+        <button class="chip" data-tab="favourites">Favourites</button>
+        <button class="chip" data-tab="mine">My foods</button>
+        <button class="chip" data-tab="recipes">Recipes</button>
+      </div>
+      <div id="addContent" class="add-content"></div>
+      <div class="create-row">
+        <button class="btn ghost" id="newCustomBtn">＋ Custom food</button>
+        <button class="btn ghost" id="newRecipeBtn">＋ Recipe</button>
+      </div>
+    </main>
+
+    <!-- ================= PROGRESS ================= -->
+    <main id="view-progress" class="view" data-view="progress">
+      <header class="topbar"><h1>Progress</h1></header>
+      <section class="card">
+        <div class="card-head">
+          <h3>Calories this week</h3>
+          <div class="week-nav"><button class="icon-btn" id="prevWeek">‹</button><span id="weekLabel"></span><button class="icon-btn" id="nextWeek">›</button></div>
+        </div>
+        <div class="chart-wrap"><canvas id="kcalChart"></canvas></div>
+        <div class="kpis" id="weekKpis"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h3>Macros this week</h3></div>
+        <div class="chart-wrap"><canvas id="macroChart"></canvas></div>
+        <div class="legend">
+          <span><i style="background:var(--protein)"></i>Protein</span>
+          <span><i style="background:var(--carbs)"></i>Carbs</span>
+          <span><i style="background:var(--fat)"></i>Fat</span>
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h3>Weight</h3>
+          <select id="weightRange" class="select-sm"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="365">1 year</option><option value="0">All</option></select>
+        </div>
+        <div class="weight-log">
+          <input type="number" id="weightInput" step="0.1" min="20" max="400" inputmode="decimal" placeholder="kg">
+          <button class="btn primary" id="logWeightBtn">Log today</button>
+        </div>
+        <div class="chart-wrap"><canvas id="weightChart"></canvas></div>
+        <div class="kpis" id="weightKpis"></div>
+        <div id="bmiCard" class="bmi"></div>
+      </section>
+    </main>
+
+    <!-- ================= ME ================= -->
+    <main id="view-me" class="view" data-view="me">
+      <header class="topbar"><h1>Me</h1></header>
+      <section class="card">
+        <h3>Profile</h3>
+        <div class="form-grid">
+          <label>Sex
+            <select id="pSex"><option value="male">Male</option><option value="female">Female</option></select>
+          </label>
+          <label>Age<input type="number" id="pAge" min="10" max="120" inputmode="numeric" placeholder="years"></label>
+          <label>Height<input type="number" id="pHeight" min="100" max="250" inputmode="numeric" placeholder="cm"></label>
+          <label>Weight<input type="number" id="pWeight" min="20" max="400" step="0.1" inputmode="decimal" placeholder="kg"></label>
+          <label class="span2">Activity<select id="pActivity"></select></label>
+          <label class="span2">Goal<select id="pGoal"></select></label>
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h3>Daily targets</h3>
+          <span class="saved-badge" id="savedBadge">Saved ✓</span>
+        </div>
+        <div class="setting-row">
+          <div><strong>Calories from profile</strong><br><small class="muted" id="autoNote"></small></div>
+          <label class="switch"><input type="checkbox" id="tAuto"><span></span></label>
+        </div>
+        <div class="group-title" style="margin-top:14px">Diet style</div>
+        <div class="presets" id="presets"></div>
+        <div class="keto-row hidden" id="ketoRow">
+          <div class="macro-head"><span>Carb limit</span><span><b id="ketoVal">25</b> g / day</span></div>
+          <input type="range" id="ketoSlider" min="10" max="50" step="5" value="25">
+        </div>
+        <p class="muted small" id="targetsNote"></p>
+        <div class="form-grid targets">
+          <label>Calories<input type="number" id="tKcal" inputmode="numeric"></label>
+          <label>Protein (g)<input type="number" id="tProtein" inputmode="numeric"></label>
+          <label>Carbs (g)<input type="number" id="tCarbs" inputmode="numeric"></label>
+          <label>Fat (g)<input type="number" id="tFat" inputmode="numeric"></label>
+        </div>
+        <div class="split-bar" id="splitBar" aria-hidden="true"></div>
+        <div class="legend split-legend" id="splitLegend"></div>
+      </section>
+      <section class="card">
+        <h3>UK food database</h3>
+        <p class="muted small" id="cofidStatus"></p>
+        <div class="row-btns">
+          <label class="btn ghost file-btn">Import CoFID spreadsheet<input type="file" id="cofidFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>
+          <a class="btn ghost" href="https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid" target="_blank" rel="noopener">Download from GOV.UK ↗</a>
+        </div>
+        <p class="muted small">Download “McCance and Widdowson's composition of foods integrated dataset” (Excel) from GOV.UK, then import it here. It's stored on this device for offline search of ~2,900 generic UK foods.</p>
+      </section>
+      <section class="card">
+        <h3>Backup</h3>
+        <div class="row-btns">
+          <button class="btn ghost" id="backupBtn">Back up to file</button>
+          <label class="btn ghost file-btn">Restore from file<input type="file" id="restoreFile" accept="application/json,.json" hidden></label>
+        </div>
+        <p class="muted small">Your diary lives only on this device. Save the backup file to OneDrive now and then – restoring replaces what's on this device.</p>
+        <button class="link-btn danger" id="resetBtn">Erase everything</button>
+      </section>
+      <section class="card about">
+        <h3>About</h3>
+        <p class="small">Product data from <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> (Open Database License). Generic UK foods from McCance &amp; Widdowson's <a href="https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid" target="_blank" rel="noopener">CoFID</a>, © Crown copyright, Open Government Licence. Targets use the Mifflin–St Jeor equation; this is not medical advice.</p>
+        <p class="small muted">FoodDiary v1.1</p>
+      </section>
+    </main>
+
+    <!-- ================= NAV ================= -->
+    <nav class="tabbar">
+      <button class="tab active" data-goto="today"><span class="tab-icon">▦</span>Today</button>
+      <button class="tab" data-goto="add"><span class="tab-icon">＋</span>Add</button>
+      <button class="tab" data-goto="progress"><span class="tab-icon">◔</span>Progress</button>
+      <button class="tab" data-goto="me"><span class="tab-icon">◯</span>Me</button>
+    </nav>
+
+    <!-- ================= SHEET (modal) ================= -->
+    <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true">
+      <div class="sheet-backdrop"></div>
+      <div class="sheet-panel">
+        <div class="sheet-grab"></div>
+        <div class="sheet-body" id="sheetBody"></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script src="js/nutrition.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/sources.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
