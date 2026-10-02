@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.8.0';
+  const APP_VERSION = '1.9.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -717,10 +717,12 @@ const UI = (() => {
     const from = range ? Nutrition.addDays(todayKey, -range) : '0000';
     const pts = s.weights.filter((w) => w.date >= from);
     const latest = Store.latestWeight();
-    $('#weightInput').placeholder = latest ? `${latest.kg} kg` : 'kg';
-    
     const todayW = s.weights.find((w) => w.date === todayKey);
-    if (todayW) $('#weightInput').value = todayW.kg;
+    $('#weightInput').value = '';
+    $('#weightInput').placeholder = latest ? `Enter today's weight (last ${fmt(latest.kg, 1)} kg)` : 'Enter your weight in kg';
+    $('#weightTodayNote').textContent = todayW ? `Today's reading: ${fmt(todayW.kg, 1)} kg — logging again replaces it.` : 'One reading per day — weigh in at the same time each day, ideally first thing.';
+    $('#logWeightBtn').textContent = todayW ? 'Update today' : 'Log today';
+    updateWeightButton();
     const startKg = s.profile.startWeightKg || (s.weights[0] && s.weights[0].kg) || null;
     const change = startKg && latest ? Math.round((latest.kg - startKg) * 10) / 10 : null;
     const b = Nutrition.bmi(latest && latest.kg, s.profile.heightCm);
@@ -746,15 +748,18 @@ const UI = (() => {
         <div class="bmi-scale-wrap">
           <div class="bmi-labels top">${marks.map(([v, k]) => `<span class="${k}" style="left:${pct(v)}%">${fmt(kgAt(v), 1)}<small>kg</small></span>`).join('')}</div>
           <div class="bmi-scale">
-            <i class="me" style="left:${pct(b)}%" title="You: BMI ${b}"></i>
             <i class="tgt" style="left:${pct(targetBmi)}%" title="Target BMI ${targetBmi}"></i>
+            <i class="me" style="left:${pct(b)}%" title="You: BMI ${b}"></i>
           </div>
           <div class="bmi-labels bottom">${marks.map(([v, k]) => `<span class="${k}" style="left:${pct(v)}%">${v}</span>`).join('')}</div>
         </div>
         <div class="legend bmi-key">
           <span><i style="background:#60a5fa"></i>Underweight &lt;18.5</span><span><i style="background:#34d399"></i>Healthy 18.5–24.9</span><span><i style="background:#fbbf24"></i>Overweight 25–29.9</span><span><i style="background:#f87171"></i>Obese 30+</span>
         </div>
-        <div class="legend bmi-key"><span><i class="dot me"></i>You</span><span><i class="dot tgt"></i>Target</span></div>
+        <div class="marker-key">
+          <span><i class="mk me"></i><b>You</b> · BMI ${b} · ${fmt(kg, 1)} kg</span>
+          <span><i class="mk tgt"></i><b>Target</b> · BMI ${targetBmi} · ${fmt(targetKg, 1)} kg</span>
+        </div>
         <div class="bmi-msg">${msg}</div>`;
       $('#targetBmi').addEventListener('change', (e) => {
         const v = parseFloat(e.target.value);
@@ -775,12 +780,24 @@ const UI = (() => {
   $('#prevWeek').addEventListener('click', () => { weekOffset--; renderProgress(); });
   $('#nextWeek').addEventListener('click', () => { if (weekOffset < 0) { weekOffset++; renderProgress(); } });
   $('#weightRange').addEventListener('change', renderProgress);
+  function updateWeightButton() {
+    const v = parseFloat($('#weightInput').value);
+    const ok = Number.isFinite(v) && v >= 20 && v <= 400;
+    $('#logWeightBtn').disabled = !ok;
+    $('#logWeightBtn').classList.toggle('primary', ok);
+    $('#weightUnit').classList.toggle('hidden', $('#weightInput').value === '');
+  }
+  $('#weightInput').addEventListener('input', updateWeightButton);
+  $('#weightInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('#logWeightBtn').disabled) $('#logWeightBtn').click(); });
   $('#logWeightBtn').addEventListener('click', () => {
-    const kg = parseFloat($('#weightInput').value);
-    if (!kg || kg < 20 || kg > 400) return toast('Enter a weight in kg');
-    Store.logWeight(Nutrition.dateKey(new Date()), Math.round(kg * 10) / 10);
+    const kg = Math.round((parseFloat($('#weightInput').value) || 0) * 10) / 10;
+    if (!kg || kg < 20 || kg > 400) return toast('Enter a weight between 20 and 400 kg');
+    const todayKey = Nutrition.dateKey(new Date());
+    const prev = Store.state.weights.find((w) => w.date === todayKey);
+    Store.logWeight(todayKey, kg);
     if (Store.state.targets.auto) recalcTargets();
-    toast('Weight logged'); renderProgress();
+    toast(prev ? `Today's reading updated: ${fmt(prev.kg, 1)} → ${fmt(kg, 1)} kg` : `Logged ${fmt(kg, 1)} kg for today`, 2600);
+    renderProgress();
   });
 
   /* ===================== ME ===================== */
@@ -809,6 +826,9 @@ const UI = (() => {
       $('#pWeight').disabled = false; $('#pWeight').focus(); $('#pWeight').select();
     });
     $('#tAuto').checked = T.auto;
+    $('#pActivity').closest('label').classList.toggle('hidden', !T.auto);
+    $('#pGoal').closest('label').classList.toggle('hidden', !T.auto);
+    $('#profileNote').textContent = T.auto ? '' : 'Activity and goal are hidden because calories are set manually (Daily targets → Calories from profile).';
     $('#tKcal').value = T.kcal; $('#tProtein').value = T.protein; $('#tCarbs').value = T.carbs; $('#tFat').value = T.fat;
     $('#tKcal').disabled = T.auto;
     const calc = Nutrition.calcTargets(p, T);

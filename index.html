@@ -121,9 +121,10 @@
           <select id="weightRange" class="select-sm"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="365">1 year</option><option value="0">All</option></select>
         </div>
         <div class="weight-log">
-          <input type="number" id="weightInput" step="0.1" min="20" max="400" inputmode="decimal" placeholder="kg">
-          <button class="btn primary" id="logWeightBtn">Log today</button>
+          <div class="input-unit"><input type="number" id="weightInput" step="0.1" min="20" max="400" inputmode="decimal" placeholder="Enter your weight in kg"><span class="unit-suffix hidden" id="weightUnit">kg</span></div>
+          <button class="btn" id="logWeightBtn" disabled>Log today</button>
         </div>
+        <p class="muted small" id="weightTodayNote" style="margin:0 0 6px"></p>
         <div class="chart-wrap"><canvas id="weightChart"></canvas></div>
         <div class="kpis" id="weightKpis"></div>
       </section>
@@ -165,6 +166,7 @@
           <label class="span2">Activity<select id="pActivity"></select></label>
           <label class="span2">Goal<select id="pGoal"></select></label>
         </div>
+        <p class="muted small" id="profileNote" style="margin:8px 0 0"></p>
         <div class="weight-info" id="weightInfo"></div>
       </section>
       <section class="card">

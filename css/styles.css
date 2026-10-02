@@ -197,8 +197,8 @@ textarea { height: auto; padding: 10px 12px; }
 .bmi-scale-wrap { width: 100%; margin: 6px 0 2px; }
 .bmi-scale { height: 12px; border-radius: 99px; background: linear-gradient(90deg, #60a5fa 0 23.2%, #34d399 23.2% 46.4%, #fbbf24 46.4% 64.3%, #f87171 64.3%); position: relative; }
 .bmi-scale i { position: absolute; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); }
-.bmi-scale i.me { width: 20px; height: 20px; background: var(--text); border: 3px solid var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.35); z-index: 2; }
-.bmi-scale i.tgt { width: 4px; height: 20px; border-radius: 2px; background: var(--card); outline: 1.5px solid var(--text); z-index: 1; }
+.bmi-scale i.me { width: 22px; height: 22px; background: var(--text); border: 3px solid var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.35); z-index: 2; }
+.bmi-scale i.tgt { width: 18px; height: 18px; border-radius: 3px; background: var(--card); border: 3px solid var(--text); transform: translate(-50%, -50%) rotate(45deg); z-index: 1; }
 .bmi-labels { position: relative; height: 22px; font-size: 11px; color: var(--muted); }
 .bmi-labels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
 .bmi-labels span.end { transform: translateX(-100%); }
@@ -208,9 +208,12 @@ textarea { height: auto; padding: 10px 12px; }
 .bmi-labels.bottom span { top: 2px; }
 .bmi-labels.bottom span.mid { display: none; }
 .bmi-key { flex-wrap: wrap; justify-content: flex-start; gap: 6px 12px; margin-top: 6px; }
-.bmi-key .dot { border-radius: 50%; width: 10px; height: 10px; }
-.bmi-key .dot.me { background: var(--text); }
-.bmi-key .dot.tgt { background: var(--card); outline: 1.5px solid var(--text); border-radius: 2px; width: 4px; }
+.marker-key { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 2px; font-size: 13px; color: var(--muted); }
+.marker-key span { display: flex; align-items: center; gap: 10px; }
+.marker-key b { color: var(--text); }
+.marker-key .mk { display: inline-block; width: 14px; height: 14px; flex: none; }
+.marker-key .mk.me { border-radius: 50%; background: var(--text); border: 2px solid var(--card); box-shadow: 0 0 0 1px var(--line); }
+.marker-key .mk.tgt { width: 11px; height: 11px; border-radius: 2px; background: var(--card); border: 3px solid var(--text); transform: rotate(45deg); margin: 0 2px; }
 .bmi-target { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); font-weight: 600; flex: none; }
 .bmi-target input { width: 74px; height: 36px; text-align: center; font-weight: 700; }
 
@@ -321,3 +324,10 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; }
 .kpi.good b { color: var(--accent); }
 .kpi.bad b { color: var(--danger); }
 input:disabled { opacity: .6; }
+
+/* Weight entry */
+.input-unit { flex: 1; position: relative; display: flex; align-items: center; }
+.input-unit input { padding-right: 40px; }
+.unit-suffix { position: absolute; right: 12px; color: var(--muted); font-weight: 700; pointer-events: none; }
+#logWeightBtn:disabled { opacity: 1; background: var(--card-2); color: var(--muted); }
+#weightInput::placeholder { font-size: 14px; }
