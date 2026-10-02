@@ -1,5 +1,7 @@
 # FoodDiary
 
+**Current version: 1.8.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
+
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
 - **Barcode scanning** with the phone camera (or type the number) → product name, photo, calories and macros from **Open Food Facts** (3.5M+ products, strong UK coverage).
@@ -36,7 +38,7 @@ Open it from the icon — it runs full-screen like a native app and works offlin
 
 ### Updating the app later
 
-Upload the changed files again (Add file → Upload files, same names overwrite). Each release already carries a new `VERSION` in `sw.js`. Phones check for updates automatically every time the app is opened or brought back to the foreground, download the new files, and refresh themselves — you'll see "Updating to the latest version…". You can also tap **Me → Check now**. The current version is shown at the bottom of the Me screen.
+Upload the changed files again (Add file → Upload files, same names overwrite). Each release already carries a new `VERSION` in `sw.js`. Phones check for updates automatically (bypassing the browser cache) every time the app is opened or brought back to the foreground, download the new files, and refresh themselves — you'll see "Updating to the latest version…". You can also tap **Me → Check now**. The current version is shown at the bottom of the Me screen.
 
 ---
 
@@ -79,3 +81,9 @@ js/app.js             UI: diary, search, scanner, OCR, recipes, charts, settings
 sw.js                 service worker (offline shell, cached libraries & product images)
 manifest.webmanifest  PWA manifest · icons/ · data/cofid.json · tools/build_cofid.py
 ```
+
+## Troubleshooting updates
+
+- **Repo layout**: `index.html` must be at the top level of the repository, not inside a `FoodDiary` folder. Upload the *contents* of the folder.
+- **Still on the old version?** Open `https://<your-username>.github.io/fooddiary/sw.js` in the phone browser — line 2 shows the version Pages is serving. If it's old, wait for the "pages build and deployment" action to finish (Actions tab), then reopen the app or tap **Me → Check now**.
+- **Last resort**: remove the home-screen icon, clear the site's data (iPhone: Settings → Safari → Advanced → Website Data), reopen the address in Safari and Add to Home Screen again.

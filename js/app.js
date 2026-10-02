@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.7.0';
+  const APP_VERSION = '1.8.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -907,7 +907,7 @@ const UI = (() => {
   async function setupUpdates() {
     if (!('serviceWorker' in navigator)) return;
     try {
-      swReg = await navigator.serviceWorker.register('sw.js');
+      swReg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }); // always check the repo, never the browser's 10-minute cache
       // A new version has been downloaded and taken over: reload once so the user is on it.
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!hadController) { hadController = true; return; } // first install – nothing to swap

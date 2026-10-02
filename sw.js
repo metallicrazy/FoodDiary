@@ -1,5 +1,5 @@
 /* FoodDiary service worker — offline app shell + cached libraries/images. Bump VERSION when you change the app. */
-const VERSION = 'fooddiary-v1.7.0';
+const VERSION = 'fooddiary-v1.8.0';
 const SHELL = [
   './', 'index.html', 'css/styles.css',
   'js/nutrition.js', 'js/store.js', 'js/sources.js', 'js/app.js',
@@ -24,7 +24,8 @@ self.addEventListener('fetch', (e) => {
 
   // Same-origin app shell: network first (so updates show straight away), cached copy when offline.
   if (url.origin === self.location.origin) {
-    e.respondWith(fetch(req).then((res) => {
+    // cache: 'no-cache' = always revalidate with GitHub Pages rather than trusting its 10-minute browser cache.
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then((res) => {
       if (res.ok) caches.open(VERSION).then((c) => c.put(req, res.clone()));
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then((hit) => hit || (req.mode === 'navigate' ? caches.match('index.html') : Response.error()))));
