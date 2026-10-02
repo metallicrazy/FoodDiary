@@ -287,3 +287,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; }
 .bmi { flex-wrap: wrap; }
 .bmi .bmi-top { display: flex; align-items: center; gap: 14px; width: 100%; }
 .bmi .bmi-msg { width: 100%; font-size: 14px; margin-top: 4px; }
+
+/* Selectable rows (diary picker) */
+.item.selectable { position: relative; }
+.item.selectable .check { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); flex: none; display: inline-flex; align-items: center; justify-content: center; transition: all .15s; }
+.item.selectable.selected { background: var(--accent-soft); }
+.item.selectable.selected .check { background: var(--accent); border-color: var(--accent); }
+.item.selectable.selected .check::after { content: "✓"; color: var(--accent-ink); font-size: 14px; font-weight: 800; }
+.chip small { font-weight: 500; opacity: .7; }

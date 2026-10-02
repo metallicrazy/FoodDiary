@@ -6,6 +6,8 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
+  const APP_VERSION = '1.3.0';
+
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
     scanner: 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js',
@@ -540,7 +542,7 @@ const UI = (() => {
       </div>
       <div class="group-title">Ingredients</div>
       <div class="ingredients" id="rIngredients"></div>
-      <button class="btn ghost block" id="rAddIng">＋ Add ingredient</button>
+      <div class="row-btns" style="margin:0"><button class="btn ghost" id="rFromDiary">🗓️ From my diary</button><button class="btn ghost" id="rAddIng">＋ Search foods</button></div>
       <div class="totals" id="rTotals" style="margin-top:12px"></div>
       <p class="muted small" id="rPer"></p>
       <div class="sheet-actions">
@@ -564,6 +566,7 @@ const UI = (() => {
     $('#rServings').addEventListener('input', draw); $('#rTotal').addEventListener('input', draw);
     const snapshot = () => Object.assign(r, { name: $('#rName').value, servings: parseInt($('#rServings').value, 10) || r.servings, totalG: parseFloat($('#rTotal').value) || null });
     $('#rAddIng').addEventListener('click', () => { snapshot(); openIngredientPicker((food, grams) => { r.ingredients.push({ food, grams }); openRecipeSheet(r); }, r); });
+    $('#rFromDiary').addEventListener('click', () => { snapshot(); openDiaryPicker((items) => { items.forEach((x) => r.ingredients.push(x)); openRecipeSheet(r); toast(`Added ${items.length} item${items.length === 1 ? '' : 's'} from your diary`); }, r); });
     $('#rSave').addEventListener('click', () => {
       const name = $('#rName').value.trim(); if (!name) return toast('Name the recipe');
       if (!r.ingredients.length) return toast('Add at least one ingredient');
@@ -609,6 +612,55 @@ const UI = (() => {
     $('#ipResults').addEventListener('click', (e) => { const b = e.target.closest('[data-food]'); if (!b) return; const f = ipIndex.get(b.dataset.food); if (f) openFoodSheet(f, { onAdd: onPick }); });
     doSearch();
     setTimeout(() => ipInput.focus(), 50);
+  }
+
+  // Pick already-logged foods from the last 7 days to reuse in a recipe.
+  function openDiaryPicker(onDone, draftRecipe) {
+    const today = Nutrition.dateKey(new Date());
+    const days = Array.from({ length: 7 }, (_, i) => Nutrition.addDays(today, -i));
+    let day = today;
+    const selected = new Map(); // entryId -> { food, grams }
+    openSheet(`
+      <div class="sheet-title"><h2>From my diary</h2><button class="icon-btn" id="closeDP">✕</button></div>
+      <p class="muted small" style="margin:0 0 8px">Pick a day, then tick the foods to add. Amounts come from what you logged.</p>
+      <div class="chips" id="dpDays">${days.map((d) => `<button class="chip ${d === today ? 'active' : ''}" data-day="${d}">${dateLabel(d)}${Store.entries(d).length ? ` <small>· ${Store.entries(d).length}</small>` : ''}</button>`).join('')}</div>
+      <div class="section-head" style="margin:4px 2px 6px"><span class="muted small" id="dpCount"></span><button class="link-btn" id="dpAll">Select all</button></div>
+      <div class="list" id="dpList"></div>
+      <div class="sheet-actions"><button class="btn" id="dpCancel">Cancel</button><button class="btn primary" id="dpAdd" disabled>Add to recipe</button></div>`);
+    const back = () => openRecipeSheet(draftRecipe);
+    $('#closeDP').addEventListener('click', back); $('#dpCancel').addEventListener('click', back);
+    const drawList = () => {
+      const list = Store.entries(day);
+      $('#dpList').innerHTML = list.length ? list.map((e) => `<button class="item selectable ${selected.has(e.id) ? 'selected' : ''}" data-pick="${e.id}">
+          <span class="check"></span>${thumbHTML(e.food)}
+          <div class="item-main"><div class="item-title">${esc(e.food.name)}</div><div class="item-sub">${e.food.brand ? esc(e.food.brand) + ' · ' : ''}${fmt(e.grams)} g</div></div>
+          <div class="item-kcal"><b>${fmt(e.kcal)}</b><small>kcal</small></div></button>`).join('')
+        : `<div class="empty" style="padding:24px"><div class="empty-icon">📭</div><p>Nothing logged on ${dateLabel(day).toLowerCase()}.</p></div>`;
+      const allDay = list.length && list.every((e) => selected.has(e.id));
+      $('#dpAll').textContent = allDay ? 'Clear day' : 'Select all';
+      $('#dpAll').classList.toggle('hidden', !list.length);
+      const n = selected.size;
+      $('#dpCount').textContent = n ? `${n} selected` : '';
+      $('#dpAdd').disabled = !n; $('#dpAdd').textContent = n ? `Add ${n} to recipe` : 'Add to recipe';
+    };
+    drawList();
+    $('#dpDays').addEventListener('click', (e) => {
+      const c = e.target.closest('[data-day]'); if (!c) return;
+      day = c.dataset.day; $$('#dpDays .chip').forEach((x) => x.classList.toggle('active', x === c)); drawList();
+    });
+    $('#dpList').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-pick]'); if (!b) return;
+      const entry = Store.entries(day).find((x) => x.id === b.dataset.pick); if (!entry) return;
+      if (selected.has(entry.id)) selected.delete(entry.id); else selected.set(entry.id, { food: Store.slimFood(entry.food), grams: entry.grams });
+      drawList();
+    });
+    $('#dpAll').addEventListener('click', () => {
+      const list = Store.entries(day);
+      if (list.every((e) => selected.has(e.id))) list.forEach((e) => selected.delete(e.id));
+      else list.forEach((e) => selected.set(e.id, { food: Store.slimFood(e.food), grams: e.grams }));
+      drawList();
+    });
+    $('#dpAdd').addEventListener('click', () => { if (selected.size) { closeSheet(true); onDone([...selected.values()]); } });
   }
 
   /* ===================== PROGRESS ===================== */
@@ -817,12 +869,47 @@ const UI = (() => {
   /* ===================== Sheet backdrop / init ===================== */
   $('.sheet-backdrop').addEventListener('click', () => closeSheet());
 
+  /* ===================== Auto-update ===================== */
+  let swReg = null, hadController = !!(navigator.serviceWorker && navigator.serviceWorker.controller), lastCheck = 0;
+  async function setupUpdates() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+      swReg = await navigator.serviceWorker.register('sw.js');
+      // A new version has been downloaded and taken over: reload once so the user is on it.
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController) { hadController = true; return; } // first install – nothing to swap
+        toast('Updating to the latest version…', 1500);
+        setTimeout(() => location.reload(), 600);
+      });
+      swReg.addEventListener('updatefound', () => {
+        const w = swReg.installing;
+        if (w) w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) toast('New version found – applying…', 1500); });
+      });
+      checkForUpdates(false);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdates(false); });
+    } catch (e) { console.warn('Service worker failed', e); }
+  }
+  // Ask the browser to re-fetch sw.js from the repo; if its VERSION changed, the new app files are downloaded.
+  async function checkForUpdates(manual) {
+    if (!swReg) { if (manual) toast('Updates need the app to be served over https'); return; }
+    if (!manual && Date.now() - lastCheck < 5 * 60 * 1000) return; // at most every 5 minutes automatically
+    lastCheck = Date.now();
+    if (!navigator.onLine) { if (manual) toast('You\u2019re offline – will check when back online'); return; }
+    try {
+      await swReg.update();
+      if (manual) {
+        if (swReg.installing || swReg.waiting) toast('Update found – applying…');
+        else toast(`You\u2019re on the latest version (v${APP_VERSION})`);
+      }
+    } catch (e) { if (manual) toast('Couldn\u2019t reach the update server'); }
+  }
+  $('#checkUpdates').addEventListener('click', () => checkForUpdates(true));
+  $('#appVersion').textContent = 'v' + APP_VERSION;
+
   async function init() {
     renderToday();
     Sources.loadCofid().then((n) => { if (n && $('#view-add').classList.contains('active')) renderAdd(); });
-    if ('serviceWorker' in navigator) {
-      try { await navigator.serviceWorker.register('sw.js'); } catch (e) { console.warn('SW failed', e); }
-    }
+    setupUpdates();
     // Recalculate "Today" when the app returns to foreground (date may have changed)
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { const t = Nutrition.dateKey(new Date()); if (currentDate !== t && dateLabel(currentDate) === 'Yesterday') currentDate = t; if ($('#view-today').classList.contains('active')) renderToday(); } });
   }

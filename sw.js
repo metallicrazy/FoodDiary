@@ -1,5 +1,5 @@
 /* FoodDiary service worker — offline app shell + cached libraries/images. Bump VERSION when you change the app. */
-const VERSION = 'fooddiary-v1.1.0';
+const VERSION = 'fooddiary-v1.3.0';
 const SHELL = [
   './', 'index.html', 'css/styles.css',
   'js/nutrition.js', 'js/store.js', 'js/sources.js', 'js/app.js',
@@ -22,12 +22,12 @@ self.addEventListener('fetch', (e) => {
   // Live API calls: network only (the app caches results itself).
   if (/openfoodfacts\.org$/.test(url.hostname) && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/cgi/'))) return;
 
-  // Same-origin app shell: cache first, refresh in background.
+  // Same-origin app shell: network first (so updates show straight away), cached copy when offline.
   if (url.origin === self.location.origin) {
-    e.respondWith(caches.match(req, { ignoreSearch: true }).then((hit) => {
-      const net = fetch(req).then((res) => { if (res.ok) caches.open(VERSION).then((c) => c.put(req, res.clone())); return res; }).catch(() => hit);
-      return hit || net;
-    }));
+    e.respondWith(fetch(req).then((res) => {
+      if (res.ok) caches.open(VERSION).then((c) => c.put(req, res.clone()));
+      return res;
+    }).catch(() => caches.match(req, { ignoreSearch: true }).then((hit) => hit || (req.mode === 'navigate' ? caches.match('index.html') : Response.error()))));
     return;
   }
 

@@ -5,7 +5,7 @@ A clean, modern food diary & calorie tracker that runs as a web app on iPhone an
 - **Barcode scanning** with the phone camera (or type the number) → product name, photo, calories and macros from **Open Food Facts** (3.5M+ products, strong UK coverage).
 - **UK generic foods** (fruit, veg, meat, cooked dishes) from the UK government's **CoFID / McCance & Widdowson** dataset, searchable offline.
 - **Custom foods from a photo of the nutrition label** — on-device text recognition pre-fills the form, you check and save.
-- **Recipes**, favourites, recents, copy-yesterday.
+- **Recipes** — build from a food search or pick items straight from your diary (any day in the last week) with the amounts you logged; favourites, recents, copy-yesterday.
 - **Daily targets** (calories, protein, carbs, fat) calculated from your profile (Mifflin–St Jeor) or set manually. Diet-style presets — **Low carb** (default), **Balanced**, **Keto** with a carb-limit slider (10–50 g). Change calories and the macros rescale to keep the same split; edit one macro and the other two adjust to fit. Every change shows **Saved ✓**.
 - **Healthy weight**: BMI card shows your healthy weight range for your height and how many kg to lose (or gain) to reach it.
 - **Progress charts**: weekly calories vs target, macros, body weight trend and BMI.
@@ -36,7 +36,7 @@ Open it from the icon — it runs full-screen like a native app and works offlin
 
 ### Updating the app later
 
-Upload the changed files again (Add file → Upload files, same names overwrite). Also edit `sw.js` and change `VERSION` (e.g. `v1.0.1`) so phones pick up the new version — then close and reopen the app twice.
+Upload the changed files again (Add file → Upload files, same names overwrite). Each release already carries a new `VERSION` in `sw.js`. Phones check for updates automatically every time the app is opened or brought back to the foreground, download the new files, and refresh themselves — you'll see "Updating to the latest version…". You can also tap **Me → Check now**. The current version is shown at the bottom of the Me screen.
 
 ---
 
