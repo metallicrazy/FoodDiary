@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.9.3';
+  const APP_VERSION = '1.10.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -434,17 +434,12 @@ const UI = (() => {
       <div class="food-hero" id="cfHero">${thumbHTML(f)}<div class="meta"><p class="muted small">Values are per 100 g (or 100 ml). Check anything read from the label before saving.</p></div></div>
       <div class="form-grid">
         <label class="span2">Name<input type="text" id="cfName" value="${esc(f.name)}" placeholder="e.g. Granola, Tesco"></label>
-        <label>Brand<input type="text" id="cfBrand" value="${esc(f.brand)}"></label>
-        <label>Barcode<input type="text" id="cfBarcode" inputmode="numeric" value="${esc(f.barcode)}"></label>
-        <label>Energy (kcal)<input type="number" id="cfKcal" inputmode="decimal" value="${v(f.kcal)}"></label>
-        <label>Serving size (g)<input type="number" id="cfServing" inputmode="decimal" value="${v(f.servingG)}"></label>
-        <label>Fat (g)<input type="number" id="cfFat" inputmode="decimal" step="0.1" value="${v(f.fat)}"></label>
-        <label>of which saturates<input type="number" id="cfSat" inputmode="decimal" step="0.1" value="${v(f.satFat)}"></label>
-        <label>Carbohydrate (g)<input type="number" id="cfCarbs" inputmode="decimal" step="0.1" value="${v(f.carbs)}"></label>
-        <label>of which sugars<input type="number" id="cfSugars" inputmode="decimal" step="0.1" value="${v(f.sugars)}"></label>
-        <label>Fibre (g)<input type="number" id="cfFibre" inputmode="decimal" step="0.1" value="${v(f.fibre)}"></label>
+        <label class="span2">Energy (kcal)<input type="number" id="cfKcal" inputmode="decimal" value="${v(f.kcal)}"></label>
         <label>Protein (g)<input type="number" id="cfProtein" inputmode="decimal" step="0.1" value="${v(f.protein)}"></label>
-        <label>Salt (g)<input type="number" id="cfSalt" inputmode="decimal" step="0.01" value="${v(f.salt)}"></label>
+        <label>Carbs (g)<input type="number" id="cfCarbs" inputmode="decimal" step="0.1" value="${v(f.carbs)}"></label>
+        <label>Fat (g)<input type="number" id="cfFat" inputmode="decimal" step="0.1" value="${v(f.fat)}"></label>
+        <label>Brand <span class="opt">optional</span><input type="text" id="cfBrand" value="${esc(f.brand)}"></label>
+        <label class="span2">Barcode <span class="opt">optional</span><input type="text" id="cfBarcode" inputmode="numeric" value="${esc(f.barcode)}"></label>
       </div>
       <div class="sheet-actions">
         ${isEdit ? '<button class="btn danger" id="cfDelete">Delete</button>' : ''}
@@ -475,7 +470,7 @@ const UI = (() => {
         await worker.terminate();
         const r = Nutrition.parseLabelText(data.text);
         const set = (id, val) => { if (val !== null && val !== undefined) $(id).value = val; };
-        set('#cfKcal', r.kcal); set('#cfFat', r.fat); set('#cfSat', r.satFat); set('#cfCarbs', r.carbs); set('#cfSugars', r.sugars); set('#cfFibre', r.fibre); set('#cfProtein', r.protein); set('#cfSalt', r.salt); set('#cfServing', r.servingG);
+        set('#cfKcal', r.kcal); set('#cfFat', r.fat); set('#cfCarbs', r.carbs); set('#cfProtein', r.protein);
         const n = ['kcal', 'fat', 'carbs', 'protein'].filter((k) => r[k] !== null).length;
         if (n === 4) box.innerHTML = `<div class="inline-note">✅ Read energy, fat, carbs and protein from the label. Please double-check the numbers below.</div>`;
         else if (n > 0) box.innerHTML = `<div class="inline-note">⚠️ Read ${n} of 4 main values. Fill in the rest by hand, or retake the photo closer and in good light.</div><details class="small muted"><summary>Text found</summary><pre style="white-space:pre-wrap">${esc(data.text)}</pre></details>`;
@@ -486,6 +481,7 @@ const UI = (() => {
       }
     }
     const numv = (id) => { const x = parseFloat($(id).value); return Number.isFinite(x) ? x : null; };
+    const keep = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null); // preserve values from label OCR / earlier edits; never store ''
     $('#cfSave').addEventListener('click', () => {
       const name = $('#cfName').value.trim();
       if (!name) return toast('Give the food a name');
@@ -494,7 +490,7 @@ const UI = (() => {
       const food = Store.saveCustomFood({
         id: f.id, name, brand: $('#cfBrand').value.trim(), barcode: $('#cfBarcode').value.replace(/\D/g, ''),
         kcal, protein: numv('#cfProtein') ?? 0, carbs: numv('#cfCarbs') ?? 0, fat: numv('#cfFat') ?? 0,
-        satFat: numv('#cfSat'), sugars: numv('#cfSugars'), fibre: numv('#cfFibre'), salt: numv('#cfSalt'), servingG: numv('#cfServing'), image
+        satFat: keep(f.satFat), sugars: keep(f.sugars), fibre: keep(f.fibre), salt: keep(f.salt), servingG: keep(f.servingG), image
       });
       toast(isEdit ? 'Food updated' : 'Food saved');
       openFoodSheet(food);
@@ -767,10 +763,51 @@ const UI = (() => {
         s.profile.targetBmi = Math.round(v * 10) / 10; Store.save(); toast(`Target BMI saved (${s.profile.targetBmi})`, 1400); renderWeight(col);
       });
     } else $('#bmiCard').innerHTML = `<div class="muted small">Add your height in <b>Me</b> and log a weight to see your BMI and healthy weight range.</div>`;
+    // ---- Forecast (30 days ahead) ----
+    const showF = s.showForecast !== false;
+    $('#forecastToggle').checked = showF;
+    const fmtD = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
+    const hasProfile = !!(s.profile.age && s.profile.heightCm);
+    const baseKg = Nutrition.smoothedWeight(s.weights, todayKey);
+    let plan = [], actual = [], intake = null, keyHtml = '';
+    const targetKgLine = s.profile.heightCm ? Math.round((s.profile.targetBmi || 24.9) * (s.profile.heightCm / 100) ** 2 * 10) / 10 : null;
+    if (showF && hasProfile && baseKg) {
+      plan = Nutrition.projectWeight(baseKg, s.profile, s.targets.kcal, todayKey, 30);
+      intake = Nutrition.averageIntake(s.diary, todayKey, 14);
+      if (intake) actual = Nutrition.projectWeight(baseKg, s.profile, intake.kcal, todayKey, 30);
+      const endPlan = plan[plan.length - 1], endAct = actual.length ? actual[actual.length - 1] : null;
+      const d = (a, b) => { const v = Math.round((b - a) * 10) / 10; return (v > 0 ? '+' : '') + fmt(v, 1); };
+      keyHtml = `<span><i class="solid"></i><b>Recorded</b> · your logged weights</span>
+        <span><i class="dashed"></i><b>Plan</b> · if you eat your ${fmt(s.targets.kcal)} kcal target daily → <b>${fmt(endPlan.kg, 1)} kg</b> (${d(baseKg, endPlan.kg)} kg) by ${fmtD(endPlan.date)}</span>
+        ${endAct ? `<span><i class="dotted"></i><b>Current pace</b> · at your recent average of ${fmt(intake.kcal)} kcal/day (${intake.days} logged days) → <b>${fmt(endAct.kg, 1)} kg</b> (${d(baseKg, endAct.kg)} kg)</span>` : `<span><i class="dotted"></i><b>Current pace</b> · shows once you've logged food on 3 days</span>`}
+        ${targetKgLine ? `<span><i class="target"></i><b>Target weight</b> · ${fmt(targetKgLine, 1)} kg (BMI ${s.profile.targetBmi || 24.9})</span>` : ''}`;
+    } else if (showF && !hasProfile) keyHtml = '<span>Add your age and height in <b>Me</b> to see a forecast.</span>';
+    else if (showF && !baseKg) keyHtml = '<span>Log a weight to see a forecast.</span>';
+    $('#forecastKey').innerHTML = keyHtml;
+
+    // Shared date axis: past readings, then forecast dates
+    const dates = pts.map((p) => p.date);
+    const fDates = plan.map((p) => p.date).filter((dk) => !dates.includes(dk));
+    const axis = [...dates, ...fDates];
+    const series = (arr) => axis.map((dk) => { const hit = arr.find((p) => p.date === dk); return hit ? hit.kg : null; });
+    const todayIdx = axis.indexOf(todayKey);
+    const datasets = [{ label: 'Recorded', data: series(pts), borderColor: col('--accent'), backgroundColor: col('--accent-soft'), fill: true, tension: 0.35, pointRadius: pts.length > 30 ? 0 : 3, pointBackgroundColor: col('--accent'), borderWidth: 2, spanGaps: true, order: 1 }];
+    if (plan.length) datasets.push({ label: 'Plan', data: series(plan), borderColor: col('--protein'), borderDash: [7, 4], borderWidth: 2, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true, order: 2 });
+    if (actual.length) datasets.push({ label: 'Current pace', data: series(actual), borderColor: col('--carbs'), borderDash: [2, 4], borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true, order: 3 });
+    if (targetKgLine && plan.length) datasets.push({ label: 'Target weight', data: axis.map(() => targetKgLine), borderColor: col('--muted'), borderDash: [1, 3], borderWidth: 1, pointRadius: 0, fill: false, order: 4 });
     draw('weightChart', {
       type: 'line',
-      data: { labels: pts.map((p) => { const [y, m, d] = p.date.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); }), datasets: [{ data: pts.map((p) => p.kg), borderColor: col('--accent'), backgroundColor: col('--accent-soft'), fill: true, tension: 0.35, pointRadius: pts.length > 30 ? 0 : 3, pointBackgroundColor: col('--accent'), borderWidth: 2 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${fmt(c.raw, 1)} kg` } } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 6, maxRotation: 0 } }, y: { ticks: { maxTicksLimit: 5, callback: (v) => v + ' kg' }, grace: '10%' } } }
+      data: { labels: axis.map(fmtD), datasets },
+      options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false }, tooltip: { filter: (c) => c.raw !== null, callbacks: { label: (c) => `${c.dataset.label}: ${fmt(c.raw, 1)} kg` } },
+          todayLine: { index: todayIdx, color: col('--muted') } },
+        scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 6, maxRotation: 0 } }, y: { ticks: { maxTicksLimit: 5, callback: (v) => v + ' kg' }, grace: '10%' } } },
+      plugins: [{ id: 'todayLine', afterDraw(chart, args, opts) {
+        if (opts.index === undefined || opts.index < 0 || !plan.length) return;
+        const x = chart.scales.x.getPixelForValue(opts.index), { top, bottom } = chart.chartArea, ctx = chart.ctx;
+        ctx.save(); ctx.strokeStyle = opts.color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+        ctx.fillStyle = opts.color; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('today', x, top + 10); ctx.restore();
+      } }]
     });
   }
   function draw(id, cfg) {
@@ -780,6 +817,7 @@ const UI = (() => {
   $('#prevWeek').addEventListener('click', () => { weekOffset--; renderProgress(); });
   $('#nextWeek').addEventListener('click', () => { if (weekOffset < 0) { weekOffset++; renderProgress(); } });
   $('#weightRange').addEventListener('change', renderProgress);
+  $('#forecastToggle').addEventListener('change', (e) => { Store.state.showForecast = e.target.checked; Store.save(); renderProgress(); });
   function updateWeightButton() {
     const v = parseFloat($('#weightInput').value);
     const ok = Number.isFinite(v) && v >= 20 && v <= 400;

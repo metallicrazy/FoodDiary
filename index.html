@@ -118,7 +118,10 @@
       <header class="topbar"><h1>Progress</h1></header>
       <section class="card">
         <div class="card-head"><h3>Weight</h3>
-          <select id="weightRange" class="select-sm"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="365">1 year</option><option value="0">All</option></select>
+          <div class="row-inline">
+            <label class="switch mini"><input type="checkbox" id="forecastToggle" checked><span></span><em>Forecast</em></label>
+            <select id="weightRange" class="select-sm"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="365">1 year</option><option value="0">All</option></select>
+          </div>
         </div>
         <div class="weight-log">
           <div class="input-unit"><input type="number" id="weightInput" step="0.1" min="20" max="400" inputmode="decimal" placeholder="Enter today's weight"><span class="unit-suffix hidden" id="weightUnit">kg</span></div>
@@ -126,6 +129,7 @@
         </div>
         <p class="muted small" id="weightTodayNote" style="margin:0 0 6px"></p>
         <div class="chart-wrap"><canvas id="weightChart"></canvas></div>
+        <div class="forecast-key" id="forecastKey"></div>
         <div class="kpis" id="weightKpis"></div>
       </section>
       <section class="card">

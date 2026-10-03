@@ -331,3 +331,19 @@ input:disabled { opacity: .6; }
 .unit-suffix { position: absolute; right: 12px; color: var(--muted); font-weight: 700; pointer-events: none; }
 #logWeightBtn:disabled { opacity: 1; background: var(--card-2); color: var(--muted); }
 #weightInput::placeholder { font-size: 15px; }
+
+/* Forecast */
+.row-inline { display: flex; align-items: center; gap: 10px; }
+.switch.mini span { width: 34px; height: 20px; }
+.switch.mini span::after { width: 14px; height: 14px; }
+.switch.mini input:checked + span::after { transform: translateX(14px); }
+.switch.mini em { font-size: 12px; }
+.forecast-key { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.forecast-key span { display: flex; align-items: center; gap: 8px; line-height: 1.3; }
+.forecast-key i { display: inline-block; width: 24px; flex: none; height: 0; border-top: 3px solid; }
+.forecast-key i.solid { border-top-style: solid; border-color: var(--accent); }
+.forecast-key i.dashed { border-top-style: dashed; border-color: var(--protein); }
+.forecast-key i.dotted { border-top-style: dotted; border-color: var(--carbs); }
+.forecast-key i.target { border-top-style: dotted; border-top-width: 2px; border-color: var(--muted); }
+.forecast-key b { color: var(--text); }
+.form-grid label .opt { font-weight: 500; opacity: .7; margin-left: 4px; }

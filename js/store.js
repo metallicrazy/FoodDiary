@@ -15,6 +15,7 @@ const Store = (() => {
     recents: [],        // [food snapshot] (max 30)
     cache: {},          // barcode -> food (OFF lookups)
     cofidLoadedAt: null,
+    showForecast: true,
     onboarded: false
   });
 

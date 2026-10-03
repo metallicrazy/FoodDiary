@@ -325,6 +325,47 @@
     return res;
   }
 
+
+  /* ---------- Weight forecast ---------- */
+  const KCAL_PER_KG = 7700;
+
+  // Smoothed starting weight: mean of readings in the last 7 days (falls back to the latest reading).
+  function smoothedWeight(weights, todayKey) {
+    if (!weights || !weights.length) return null;
+    const from = addDays(todayKey, -6);
+    const recent = weights.filter((w) => w.date >= from && w.date <= todayKey);
+    const use = recent.length ? recent : [weights[weights.length - 1]];
+    return use.reduce((a, w) => a + w.kg, 0) / use.length;
+  }
+
+  // Average logged kcal over the last `days` days that have at least one entry (today excluded as it may be incomplete).
+  function averageIntake(diary, todayKey, days = 14) {
+    let total = 0, n = 0;
+    for (let i = 1; i <= days; i++) {
+      const k = addDays(todayKey, -i);
+      const list = diary[k];
+      if (list && list.length) { total += list.reduce((a, e) => a + (e.kcal || 0), 0); n++; }
+    }
+    return n >= 3 ? { kcal: total / n, days: n } : null;
+  }
+
+  // Project weight forward `days` days given a daily calorie intake. Maintenance is re-derived each day
+  // from the projected weight (so the curve flattens as weight falls). Returns [{ date, kg }].
+  function projectWeight(startKg, profile, dailyKcal, todayKey, days = 30) {
+    if (!startKg || !dailyKcal) return [];
+    const act = (ACTIVITY[profile.activity] || ACTIVITY.light).factor;
+    const out = [{ date: todayKey, kg: round(startKg, 2) }];
+    let kg = startKg;
+    for (let i = 1; i <= days; i++) {
+      const b = bmr(Object.assign({}, profile, { weightKg: kg }));
+      if (b === null) return [];
+      const maintenance = b * act;
+      kg += (dailyKcal - maintenance) / KCAL_PER_KG;
+      out.push({ date: addDays(todayKey, i), kg: round(kg, 2) });
+    }
+    return out;
+  }
+
   /* ---------- Dates ---------- */
   function dateKey(d) {
     const x = d instanceof Date ? d : new Date(d);
@@ -338,5 +379,5 @@
     return dateKey(dt);
   }
 
-  return { ACTIVITY, GOALS, PRESETS, macrosFor, splitOf, kcalOfMacros, rebalance, healthyWeightRange, bmr, calcTargets, bmi, bmiCategory, scale, scaleExact, sum, fromOFF, parseCofidRows, parseLabelText, dateKey, addDays, round, num };
+  return { ACTIVITY, GOALS, PRESETS, macrosFor, splitOf, kcalOfMacros, rebalance, healthyWeightRange, KCAL_PER_KG, smoothedWeight, averageIntake, projectWeight, bmr, calcTargets, bmi, bmiCategory, scale, scaleExact, sum, fromOFF, parseCofidRows, parseLabelText, dateKey, addDays, round, num };
 });
