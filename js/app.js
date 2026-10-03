@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.10.4';
+  const APP_VERSION = '1.10.5';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -724,7 +724,7 @@ const UI = (() => {
     const change = startKg && latest ? Math.round((latest.kg - startKg) * 10) / 10 : null;
     const b = Nutrition.bmi(latest && latest.kg, s.profile.heightCm);
     const trend = change === null ? '' : change < 0 ? 'good' : change > 0 ? 'bad' : '';
-    $('#weightKpis').innerHTML = `<table class="ftable recorded">
+    $('#weightKpis').innerHTML = `<div class="ktitle">Recorded <small>your logged weights</small></div><table class="ftable recorded">
       <thead><tr><th></th><th>Start kg</th><th>Now kg</th><th>Kg since start</th></tr></thead>
       <tbody><tr><td><i class="solid"></i>Recorded</td><td>${startKg ? fmt(startKg, 1) : '—'}${s.profile.startDate ? `<small>${fmtD(s.profile.startDate)}</small>` : ''}</td><td>${latest ? fmt(latest.kg, 1) : '—'}${latest ? `<small>BMI ${b ?? '—'} · ${fmtD(latest.date)}</small>` : ''}</td><td class="${trend}">${change === null ? '—' : (change > 0 ? '+' : '') + fmt(change, 1)}</td></tr></tbody>
     </table>`;
@@ -789,10 +789,10 @@ const UI = (() => {
         return `${fmtD(Nutrition.addDays(todayKey, days))}<small>${Nutrition.durationLabel(days)}</small>`;
       };
       const tBmi = s.profile.targetBmi || 24.9;
-      const targetCell = targetKgLine ? `${fmt(targetKgLine, 1)} kg<small>BMI ${tBmi}</small>` : '<span class="muted">Set height in Me</span>';
+      const targetCell = targetKgLine ? `${tBmi}<small>${fmt(targetKgLine, 1)} kg</small>` : '<span class="muted">Set height in Me</span>';
       const row = (cls, name, kcal, target, date) => `<tr><td><i class="${cls}"></i>${name}</td><td>${kcal}</td><td>${target}</td><td>${date}</td></tr>`;
-      keyHtml = `<table class="ftable">
-        <thead><tr><th></th><th>Daily kcal</th><th>Target weight &amp; BMI</th><th>Forecast date</th></tr></thead>
+      keyHtml = `<div class="ktitle">Forecast <small>next 30 days · when you'd reach your target</small></div><table class="ftable">
+        <thead><tr><th></th><th>Daily kcal</th><th>Target BMI</th><th>Forecast date</th></tr></thead>
         <tbody>
           ${row('dashed', 'Plan intake', fmt(s.targets.kcal), targetCell, when(s.targets.kcal))}
           ${endAct ? row('dotted', 'Avg intake', `${fmt(intake.kcal)}<small>${intake.days}-day avg</small>`, targetCell, when(intake.kcal))
