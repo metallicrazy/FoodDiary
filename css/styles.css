@@ -338,12 +338,17 @@ input:disabled { opacity: .6; }
 .switch.mini span::after { width: 14px; height: 14px; }
 .switch.mini input:checked + span::after { transform: translateX(14px); }
 .switch.mini em { font-size: 12px; }
-.forecast-key { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 8px; }
-.forecast-key span { display: flex; align-items: center; gap: 8px; line-height: 1.3; }
-.forecast-key i { display: inline-block; width: 24px; flex: none; height: 0; border-top: 3px solid; }
-.forecast-key i.solid { border-top-style: solid; border-color: var(--accent); }
-.forecast-key i.dashed { border-top-style: dashed; border-color: var(--protein); }
-.forecast-key i.dotted { border-top-style: dotted; border-color: var(--carbs); }
-.forecast-key i.target { border-top-style: dotted; border-top-width: 2px; border-color: var(--muted); }
-.forecast-key b { color: var(--text); }
-.form-grid label .opt { font-weight: 500; opacity: .7; margin-left: 4px; }
+
+/* Forecast key table */
+.forecast-key { margin-top: 10px; }
+.ftable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ftable th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 0 4px 6px 0; }
+.ftable td { padding: 7px 4px 7px 0; border-top: 1px solid var(--line); vertical-align: top; line-height: 1.25; }
+.ftable td:first-child { white-space: nowrap; font-weight: 600; }
+.ftable td small { display: block; color: var(--muted); font-size: 11px; font-weight: 500; }
+.ftable i { display: inline-block; width: 18px; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 6px; }
+.ftable i.solid { border-top-style: solid; border-color: var(--accent); }
+.ftable i.dashed { border-top-style: dashed; border-color: var(--protein); }
+.ftable i.dotted { border-top-style: dotted; border-color: var(--carbs); }
+.ftable-note { font-size: 11.5px; color: var(--muted); margin: 8px 0 0; line-height: 1.35; }
+@media (max-width: 360px) { .ftable { font-size: 11.5px; } }

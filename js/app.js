@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.10.0';
+  const APP_VERSION = '1.10.2';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -438,8 +438,8 @@ const UI = (() => {
         <label>Protein (g)<input type="number" id="cfProtein" inputmode="decimal" step="0.1" value="${v(f.protein)}"></label>
         <label>Carbs (g)<input type="number" id="cfCarbs" inputmode="decimal" step="0.1" value="${v(f.carbs)}"></label>
         <label>Fat (g)<input type="number" id="cfFat" inputmode="decimal" step="0.1" value="${v(f.fat)}"></label>
-        <label>Brand <span class="opt">optional</span><input type="text" id="cfBrand" value="${esc(f.brand)}"></label>
-        <label class="span2">Barcode <span class="opt">optional</span><input type="text" id="cfBarcode" inputmode="numeric" value="${esc(f.barcode)}"></label>
+        <label>Brand (optional)<input type="text" id="cfBrand" value="${esc(f.brand)}"></label>
+        <label class="span2">Barcode (optional)<input type="text" id="cfBarcode" inputmode="numeric" value="${esc(f.barcode)}"></label>
       </div>
       <div class="sheet-actions">
         ${isEdit ? '<button class="btn danger" id="cfDelete">Delete</button>' : ''}
@@ -777,12 +777,25 @@ const UI = (() => {
       if (intake) actual = Nutrition.projectWeight(baseKg, s.profile, intake.kcal, todayKey, 30);
       const endPlan = plan[plan.length - 1], endAct = actual.length ? actual[actual.length - 1] : null;
       const d = (a, b) => { const v = Math.round((b - a) * 10) / 10; return (v > 0 ? '+' : '') + fmt(v, 1); };
-      keyHtml = `<span><i class="solid"></i><b>Recorded</b> · your logged weights</span>
-        <span><i class="dashed"></i><b>Plan</b> · if you eat your ${fmt(s.targets.kcal)} kcal target daily → <b>${fmt(endPlan.kg, 1)} kg</b> (${d(baseKg, endPlan.kg)} kg) by ${fmtD(endPlan.date)}</span>
-        ${endAct ? `<span><i class="dotted"></i><b>Current pace</b> · at your recent average of ${fmt(intake.kcal)} kcal/day (${intake.days} logged days) → <b>${fmt(endAct.kg, 1)} kg</b> (${d(baseKg, endAct.kg)} kg)</span>` : `<span><i class="dotted"></i><b>Current pace</b> · shows once you've logged food on 3 days</span>`}
-        ${targetKgLine ? `<span><i class="target"></i><b>Target weight</b> · ${fmt(targetKgLine, 1)} kg (BMI ${s.profile.targetBmi || 24.9})</span>` : ''}`;
-    } else if (showF && !hasProfile) keyHtml = '<span>Add your age and height in <b>Me</b> to see a forecast.</span>';
-    else if (showF && !baseKg) keyHtml = '<span>Log a weight to see a forecast.</span>';
+      const when = (kcal) => {
+        if (!targetKgLine) return '—';
+        const days = Nutrition.daysToTarget(baseKg, s.profile, kcal, targetKgLine, 730);
+        if (days === 0) return 'Already there';
+        if (days === null) return '<span class="muted">Not at this pace</span>';
+        return `${fmtD(Nutrition.addDays(todayKey, days))}<small>${Nutrition.durationLabel(days)}</small>`;
+      };
+      const row = (cls, name, kcal, endKg, reach) => `<tr><td><i class="${cls}"></i>${name}</td><td>${kcal}</td><td>${endKg}</td><td>${reach}</td></tr>`;
+      keyHtml = `<table class="ftable">
+        <thead><tr><th></th><th>Daily kcal</th><th>In 30 days</th><th>Reach ${targetKgLine ? fmt(targetKgLine, 1) + ' kg' : 'target'}</th></tr></thead>
+        <tbody>
+          ${row('solid', 'Recorded', '—', `${fmt(latest.kg, 1)} kg<small>today</small>`, '—')}
+          ${row('dashed', 'Plan intake', fmt(s.targets.kcal), `${fmt(endPlan.kg, 1)} kg<small>${d(baseKg, endPlan.kg)} kg</small>`, when(s.targets.kcal))}
+          ${endAct ? row('dotted', 'Avg intake', `${fmt(intake.kcal)}<small>${intake.days}-day avg</small>`, `${fmt(endAct.kg, 1)} kg<small>${d(baseKg, endAct.kg)} kg</small>`, when(intake.kcal))
+                   : row('dotted', 'Avg intake', '<span class="muted">—</span>', '<span class="muted">—</span>', '<span class="muted">Log food on 3 days</span>')}
+        </tbody></table>
+        <p class="ftable-note">Plan intake = eating your calorie target every day. Avg intake = your recent average of what you've logged. Target ${targetKgLine ? fmt(targetKgLine, 1) + ' kg' : ''} is the faint line (BMI ${s.profile.targetBmi || 24.9}).</p>`;
+    } else if (showF && !hasProfile) keyHtml = '<p class="ftable-note">Add your age and height in <b>Me</b> to see a forecast.</p>';
+    else if (showF && !baseKg) keyHtml = '<p class="ftable-note">Log a weight to see a forecast.</p>';
     $('#forecastKey').innerHTML = keyHtml;
 
     // Shared date axis: past readings, then forecast dates
@@ -792,8 +805,8 @@ const UI = (() => {
     const series = (arr) => axis.map((dk) => { const hit = arr.find((p) => p.date === dk); return hit ? hit.kg : null; });
     const todayIdx = axis.indexOf(todayKey);
     const datasets = [{ label: 'Recorded', data: series(pts), borderColor: col('--accent'), backgroundColor: col('--accent-soft'), fill: true, tension: 0.35, pointRadius: pts.length > 30 ? 0 : 3, pointBackgroundColor: col('--accent'), borderWidth: 2, spanGaps: true, order: 1 }];
-    if (plan.length) datasets.push({ label: 'Plan', data: series(plan), borderColor: col('--protein'), borderDash: [7, 4], borderWidth: 2, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true, order: 2 });
-    if (actual.length) datasets.push({ label: 'Current pace', data: series(actual), borderColor: col('--carbs'), borderDash: [2, 4], borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true, order: 3 });
+    if (plan.length) datasets.push({ label: 'Plan intake', data: series(plan), borderColor: col('--protein'), borderDash: [7, 4], borderWidth: 2, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true, order: 2 });
+    if (actual.length) datasets.push({ label: 'Avg intake', data: series(actual), borderColor: col('--carbs'), borderDash: [2, 4], borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true, order: 3 });
     if (targetKgLine && plan.length) datasets.push({ label: 'Target weight', data: axis.map(() => targetKgLine), borderColor: col('--muted'), borderDash: [1, 3], borderWidth: 1, pointRadius: 0, fill: false, order: 4 });
     draw('weightChart', {
       type: 'line',

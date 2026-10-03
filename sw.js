@@ -1,5 +1,5 @@
 /* FoodDiary service worker — offline app shell + cached libraries/images. Bump VERSION when you change the app. */
-const VERSION = 'fooddiary-v1.10.0';
+const VERSION = 'fooddiary-v1.10.2';
 const SHELL = [
   './', 'index.html', 'css/styles.css',
   'js/nutrition.js', 'js/store.js', 'js/sources.js', 'js/app.js',

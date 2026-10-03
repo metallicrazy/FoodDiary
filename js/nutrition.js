@@ -366,6 +366,33 @@
     return out;
   }
 
+  // Days until the projection reaches targetKg (crossing from either side). null if not within maxDays or moving away.
+  function daysToTarget(startKg, profile, dailyKcal, targetKg, maxDays = 730) {
+    if (!startKg || !dailyKcal || !targetKg) return null;
+    const act = (ACTIVITY[profile.activity] || ACTIVITY.light).factor;
+    const dir = Math.sign(targetKg - startKg);
+    if (dir === 0) return 0;
+    let kg = startKg;
+    for (let i = 1; i <= maxDays; i++) {
+      const b = bmr(Object.assign({}, profile, { weightKg: kg }));
+      if (b === null) return null;
+      const delta = (dailyKcal - b * act) / KCAL_PER_KG;
+      if (Math.sign(delta) !== dir || Math.abs(delta) < 0.0005) return null; // moving away or stalled
+      kg += delta;
+      if ((dir < 0 && kg <= targetKg) || (dir > 0 && kg >= targetKg)) return i;
+    }
+    return null;
+  }
+
+  // "10 weeks", "7 months", "about 2 years"
+  function durationLabel(days) {
+    if (days === null || days === undefined) return '';
+    if (days < 14) return `${days} day${days === 1 ? '' : 's'}`;
+    if (days < 70) return `${Math.round(days / 7)} weeks`;
+    if (days < 365) return `${Math.round(days / 30.4)} months`;
+    const y = Math.round((days / 365) * 10) / 10; return `${y} year${y === 1 ? '' : 's'}`;
+  }
+
   /* ---------- Dates ---------- */
   function dateKey(d) {
     const x = d instanceof Date ? d : new Date(d);
@@ -379,5 +406,5 @@
     return dateKey(dt);
   }
 
-  return { ACTIVITY, GOALS, PRESETS, macrosFor, splitOf, kcalOfMacros, rebalance, healthyWeightRange, KCAL_PER_KG, smoothedWeight, averageIntake, projectWeight, bmr, calcTargets, bmi, bmiCategory, scale, scaleExact, sum, fromOFF, parseCofidRows, parseLabelText, dateKey, addDays, round, num };
+  return { ACTIVITY, GOALS, PRESETS, macrosFor, splitOf, kcalOfMacros, rebalance, healthyWeightRange, KCAL_PER_KG, smoothedWeight, averageIntake, projectWeight, daysToTarget, durationLabel, bmr, calcTargets, bmi, bmiCategory, scale, scaleExact, sum, fromOFF, parseCofidRows, parseLabelText, dateKey, addDays, round, num };
 });
