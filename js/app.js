@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.10.5';
+  const APP_VERSION = '1.11.2';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -77,7 +77,61 @@ const UI = (() => {
     return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   }
 
+  function renderJourney() {
+    const s = Store.state, p = s.profile, el = $('#journeyCard');
+    const latest = Store.latestWeight();
+    const startKg = p.startWeightKg, h = p.heightCm;
+    if (!startKg || !h || !latest) {
+      el.classList.remove('done');
+      el.innerHTML = `<div class="j-prompt"><span>📍</span><span>Set your height and starting weight to track your journey.</span><button class="btn small" data-goto="me">Set up</button></div>`;
+      return;
+    }
+    const targetKg = Math.round((p.targetBmi || 24.9) * (h / 100) ** 2 * 10) / 10;
+    const now = latest.kg;
+    const total = startKg - targetKg;                 // positive = losing journey, negative = gaining
+    const done = startKg - now;                       // same sign convention
+    const losing = total > 0;
+    const reached = losing ? now <= targetKg : total < 0 ? now >= targetKg : true;
+    const frac = total === 0 ? 1 : Math.max(0, Math.min(1, done / total));
+    const pct = Math.round(frac * 100);
+    const moved = Math.round(Math.abs(now - startKg) * 10) / 10;
+    const wrongWay = losing ? now > startKg : now < startKg;
+    const fmtD = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
+
+    // Pace line from real intake
+    const todayKey = Nutrition.dateKey(new Date());
+    const intake = Nutrition.averageIntake(s.diary, todayKey, 14);
+    let paceHtml = '';
+    if (!reached) {
+      if (intake) {
+        const diff = Math.round(intake.kcal - s.targets.kcal);
+        const vs = Math.abs(diff) < 50 ? 'right on your target intake' : `averaging <b class="${diff > 0 ? 'up' : 'down'}">${fmt(Math.abs(diff))} kcal ${diff > 0 ? 'above' : 'below'}</b> target`;
+        const base = Nutrition.smoothedWeight(s.weights, todayKey);
+        const days = Nutrition.daysToTarget(base, p, intake.kcal, targetKg, 730);
+        const when = days === null ? 'not reaching target at this pace' : days === 0 ? 'there now' : `on track for <b>${fmtD(Nutrition.addDays(todayKey, days))}</b>`;
+        paceHtml = `<small>At your real intake: ${when} — ${vs}.</small>`;
+      } else paceHtml = `<small>Log food on 3 days to see when you'll reach target.</small>`;
+    }
+
+    el.classList.toggle('done', reached);
+    const curBmi = Nutrition.bmi(now, h);
+    const pctText = reached ? '100%' : `${pct}%`;
+    let note = '';
+    if (reached) note = `<small class="ok">🎉 Target reached — ${fmt(moved, 1)} kg ${losing ? 'down' : 'up'} since ${fmtD(p.startDate)}.</small>`;
+    else if (wrongWay) note = `<small class="up">${fmt(moved, 1)} kg ${losing ? 'above' : 'below'} starting weight.</small>`;
+    el.innerHTML = `
+      <div class="j-row">
+        <b class="j-end">${fmt(startKg, 1)} kg</b>
+        <div class="j-bar"><div class="j-fill" style="width:${reached ? 100 : pct}%"></div><div class="j-dot" style="left:${reached ? 100 : pct}%"></div></div>
+        <b class="j-end">${fmt(targetKg, 1)} kg</b>
+        <span class="j-pct ${reached ? 'done' : wrongWay ? 'over' : ''}">(${pctText})</span>
+      </div>
+      <div class="j-bmi">Current BMI <b>${curBmi}</b> → Target BMI <b>${p.targetBmi || 24.9}</b></div>
+      ${note || paceHtml ? `<p class="j-line">${note}${reached ? '' : paceHtml}</p>` : ''}`;
+  }
+
   function renderToday() {
+    renderJourney();
     const s = Store.state;
     $('#dateLabel').textContent = dateLabel(currentDate);
     $('#dateSub').textContent = fullDate(currentDate);
@@ -981,7 +1035,7 @@ const UI = (() => {
   /* ===================== Auto-update ===================== */
   let swReg = null, hadController = !!(navigator.serviceWorker && navigator.serviceWorker.controller), lastCheck = 0;
   async function setupUpdates() {
-    if (!('serviceWorker' in navigator)) return;
+    if (!('serviceWorker' in navigator) || location.protocol === 'file:') return; // no offline/update features in local preview
     try {
       swReg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }); // always check the repo, never the browser's 10-minute cache
       // A new version has been downloaded and taken over: reload once so the user is on it.

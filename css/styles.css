@@ -362,3 +362,24 @@ input:disabled { opacity: .6; }
 .ftable td.good { color: var(--accent); font-weight: 700; }
 .ftable td.bad { color: var(--danger); font-weight: 700; }
 
+
+/* Journey card (Today) */
+.journey { padding: 14px 16px; cursor: pointer; }
+.journey:active { transform: scale(.995); }
+.journey .j-row { display: flex; align-items: center; gap: 10px; }
+.journey .j-end { font-size: 14px; font-weight: 700; white-space: nowrap; }
+.journey .j-bar { position: relative; flex: 1; height: 10px; border-radius: 99px; background: var(--card-2); }
+.journey .j-fill { height: 100%; border-radius: 99px; background: var(--accent); width: 0; transition: width .6s cubic-bezier(.2,.8,.2,1); }
+.journey .j-dot { position: absolute; top: 50%; width: 18px; height: 18px; border-radius: 50%; background: var(--text); border: 3px solid var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.3); transform: translate(-50%, -50%); transition: left .6s cubic-bezier(.2,.8,.2,1); }
+.journey .j-pct { font-size: 14px; font-weight: 800; color: var(--accent); white-space: nowrap; }
+.journey .j-pct.over { color: var(--danger); }
+.journey .j-bmi { margin-top: 10px; font-size: 14px; color: var(--muted); }
+.journey .j-bmi b { color: var(--text); }
+.journey .j-line { margin: 6px 0 0; font-size: 13px; line-height: 1.35; color: var(--muted); }
+.journey .j-line small { display: block; font-size: 13px; }
+.journey .j-line .up { color: var(--danger); font-weight: 600; }
+.journey .j-line .down { color: var(--accent); font-weight: 600; }
+.journey .j-line .ok { color: var(--text); }
+.journey .j-prompt { color: var(--muted); font-size: 14px; display: flex; align-items: center; gap: 10px; }
+.journey .j-prompt .btn { margin-left: auto; }
+.journey.done { background: linear-gradient(135deg, var(--accent-soft), var(--card)); }

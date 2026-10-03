@@ -109,4 +109,6 @@ for r in rows[start:]:
 os.makedirs('data', exist_ok=True)
 with open('data/cofid.json', 'w', encoding='utf-8') as f:
     json.dump(out, f, ensure_ascii=False, separators=(',', ':'))
-print(f'Wrote {len(out)} foods from sheet "{sheet_name}" to data/cofid.json')
+with open('data/cofid.js', 'w', encoding='utf-8') as f:  # same data as a script, for local file:// preview
+    f.write('window.__COFID=' + json.dumps(out, ensure_ascii=False, separators=(',', ':')) + ';')
+print(f'Wrote {len(out)} foods from sheet "{sheet_name}" to data/cofid.json and data/cofid.js')

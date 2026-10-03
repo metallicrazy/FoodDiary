@@ -17,10 +17,15 @@ const Sources = (() => {
     if (imported && imported.length) data = imported;
     // 2) the dataset bundled with the app (also cached by the service worker for offline use)
     if (!data) {
-      try {
-        const r = await fetch('data/cofid.json');
-        if (r.ok) { const j = await r.json(); if (Array.isArray(j) && j.length) data = j; }
-      } catch (e) { /* offline and not yet cached */ }
+      if (location.protocol === 'file:') {
+        // Local preview (index.html opened from a folder): fetch() is blocked, so load the script version instead.
+        try { await loadScript('data/cofid.js'); if (Array.isArray(window.__COFID) && window.__COFID.length) data = window.__COFID; } catch (e) { /* missing */ }
+      } else {
+        try {
+          const r = await fetch('data/cofid.json');
+          if (r.ok) { const j = await r.json(); if (Array.isArray(j) && j.length) data = j; }
+        } catch (e) { /* offline and not yet cached */ }
+      }
     }
     // 3) last resort: an older cached copy
     if (!data) { const cached = await Store.kvGet('cofid'); if (cached && cached.length) data = cached; }
