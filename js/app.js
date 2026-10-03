@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.10.2';
+  const APP_VERSION = '1.10.4';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -719,10 +719,15 @@ const UI = (() => {
     $('#weightTodayNote').textContent = todayW ? `Today's reading: ${fmt(todayW.kg, 1)} kg — logging again replaces it.` : 'One reading per day — weigh in at the same time each day, ideally first thing.';
     $('#logWeightBtn').textContent = todayW ? 'Update today' : 'Log today';
     updateWeightButton();
+    const fmtD = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
     const startKg = s.profile.startWeightKg || (s.weights[0] && s.weights[0].kg) || null;
     const change = startKg && latest ? Math.round((latest.kg - startKg) * 10) / 10 : null;
     const b = Nutrition.bmi(latest && latest.kg, s.profile.heightCm);
-    $('#weightKpis').innerHTML = `<div class="kpi"><b>${startKg ? fmt(startKg, 1) : '–'}</b><small>start kg</small></div><div class="kpi"><b>${latest ? fmt(latest.kg, 1) : '–'}</b><small>now kg</small></div><div class="kpi ${change === null ? '' : change < 0 ? 'good' : change > 0 ? 'bad' : ''}"><b>${change === null ? '–' : (change > 0 ? '+' : '') + fmt(change, 1)}</b><small>kg since start</small></div>`;
+    const trend = change === null ? '' : change < 0 ? 'good' : change > 0 ? 'bad' : '';
+    $('#weightKpis').innerHTML = `<table class="ftable recorded">
+      <thead><tr><th></th><th>Start kg</th><th>Now kg</th><th>Kg since start</th></tr></thead>
+      <tbody><tr><td><i class="solid"></i>Recorded</td><td>${startKg ? fmt(startKg, 1) : '—'}${s.profile.startDate ? `<small>${fmtD(s.profile.startDate)}</small>` : ''}</td><td>${latest ? fmt(latest.kg, 1) : '—'}${latest ? `<small>BMI ${b ?? '—'} · ${fmtD(latest.date)}</small>` : ''}</td><td class="${trend}">${change === null ? '—' : (change > 0 ? '+' : '') + fmt(change, 1)}</td></tr></tbody>
+    </table>`;
     if (b) {
       const h = s.profile.heightCm, m2 = (h / 100) ** 2, kg = latest.kg;
       const LO = 12, HI = 40, pct = (v) => Math.max(0, Math.min(100, ((v - LO) / (HI - LO)) * 100));
@@ -766,7 +771,6 @@ const UI = (() => {
     // ---- Forecast (30 days ahead) ----
     const showF = s.showForecast !== false;
     $('#forecastToggle').checked = showF;
-    const fmtD = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
     const hasProfile = !!(s.profile.age && s.profile.heightCm);
     const baseKg = Nutrition.smoothedWeight(s.weights, todayKey);
     let plan = [], actual = [], intake = null, keyHtml = '';
@@ -784,16 +788,17 @@ const UI = (() => {
         if (days === null) return '<span class="muted">Not at this pace</span>';
         return `${fmtD(Nutrition.addDays(todayKey, days))}<small>${Nutrition.durationLabel(days)}</small>`;
       };
-      const row = (cls, name, kcal, endKg, reach) => `<tr><td><i class="${cls}"></i>${name}</td><td>${kcal}</td><td>${endKg}</td><td>${reach}</td></tr>`;
+      const tBmi = s.profile.targetBmi || 24.9;
+      const targetCell = targetKgLine ? `${fmt(targetKgLine, 1)} kg<small>BMI ${tBmi}</small>` : '<span class="muted">Set height in Me</span>';
+      const row = (cls, name, kcal, target, date) => `<tr><td><i class="${cls}"></i>${name}</td><td>${kcal}</td><td>${target}</td><td>${date}</td></tr>`;
       keyHtml = `<table class="ftable">
-        <thead><tr><th></th><th>Daily kcal</th><th>In 30 days</th><th>Reach ${targetKgLine ? fmt(targetKgLine, 1) + ' kg' : 'target'}</th></tr></thead>
+        <thead><tr><th></th><th>Daily kcal</th><th>Target weight &amp; BMI</th><th>Forecast date</th></tr></thead>
         <tbody>
-          ${row('solid', 'Recorded', '—', `${fmt(latest.kg, 1)} kg<small>today</small>`, '—')}
-          ${row('dashed', 'Plan intake', fmt(s.targets.kcal), `${fmt(endPlan.kg, 1)} kg<small>${d(baseKg, endPlan.kg)} kg</small>`, when(s.targets.kcal))}
-          ${endAct ? row('dotted', 'Avg intake', `${fmt(intake.kcal)}<small>${intake.days}-day avg</small>`, `${fmt(endAct.kg, 1)} kg<small>${d(baseKg, endAct.kg)} kg</small>`, when(intake.kcal))
-                   : row('dotted', 'Avg intake', '<span class="muted">—</span>', '<span class="muted">—</span>', '<span class="muted">Log food on 3 days</span>')}
+          ${row('dashed', 'Plan intake', fmt(s.targets.kcal), targetCell, when(s.targets.kcal))}
+          ${endAct ? row('dotted', 'Avg intake', `${fmt(intake.kcal)}<small>${intake.days}-day avg</small>`, targetCell, when(intake.kcal))
+                   : row('dotted', 'Avg intake', '<span class="muted">—</span>', targetCell, '<span class="muted">Log food on 3 days</span>')}
         </tbody></table>
-        <p class="ftable-note">Plan intake = eating your calorie target every day. Avg intake = your recent average of what you've logged. Target ${targetKgLine ? fmt(targetKgLine, 1) + ' kg' : ''} is the faint line (BMI ${s.profile.targetBmi || 24.9}).</p>`;
+        <p class="ftable-note">Plan intake = eating your calorie target every day. Avg intake = your recent average of what you've logged. Chart shows the next 30 days; in 30 days Plan intake reaches ${fmt(endPlan.kg, 1)} kg${endAct ? `, Avg intake ${fmt(endAct.kg, 1)} kg` : ''}.</p>`;
     } else if (showF && !hasProfile) keyHtml = '<p class="ftable-note">Add your age and height in <b>Me</b> to see a forecast.</p>';
     else if (showF && !baseKg) keyHtml = '<p class="ftable-note">Log a weight to see a forecast.</p>';
     $('#forecastKey').innerHTML = keyHtml;

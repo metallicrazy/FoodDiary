@@ -352,3 +352,8 @@ input:disabled { opacity: .6; }
 .ftable i.dotted { border-top-style: dotted; border-color: var(--carbs); }
 .ftable-note { font-size: 11.5px; color: var(--muted); margin: 8px 0 0; line-height: 1.35; }
 @media (max-width: 360px) { .ftable { font-size: 11.5px; } }
+
+.recorded-key { margin-top: 10px; }
+.ftable td.good { color: var(--accent); font-weight: 700; }
+.ftable td.bad { color: var(--danger); font-weight: 700; }
+.forecast-key .ftable { margin-top: 6px; }
