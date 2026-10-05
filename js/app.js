@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.11.2';
+  const APP_VERSION = '1.13.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -188,13 +188,19 @@ const UI = (() => {
     for (const [re, e] of map) if (re.test(n)) return e;
     return f.isRecipe || f.source === 'recipe' ? '🍲' : '🍽️';
   }
+  function amountLabel(e) {
+    const u = e.liquid ? 'ml' : 'g';
+    if (e.unit && e.qty) return `${fmt(e.qty, 2)} ${e.qty === 1 ? e.unit : (e.unitPlural || e.unit + 's')} · ${fmt(e.grams)} ${u}`;
+    if (e.qty && e.qty !== 1 && e.sizeG) return `${fmt(e.qty, 2)} × ${fmt(e.sizeG)} ${u} · ${fmt(e.grams)} ${u}`;
+    return `${fmt(e.grams)} ${u}`;
+  }
   function entryRow(e) {
     const f = e.food;
     return `<button class="item" data-entry="${e.id}">
       ${thumbHTML(f)}
       <div class="item-main">
         <div class="item-title">${esc(f.name)}</div>
-        <div class="item-sub">${f.brand ? esc(f.brand) + ' · ' : ''}${fmt(e.grams)} g · P ${fmt(e.protein)} · C ${fmt(e.carbs)} · F ${fmt(e.fat)}</div>
+        <div class="item-sub">${f.brand ? esc(f.brand) + ' · ' : ''}${amountLabel(e)} · P ${fmt(e.protein)} · C ${fmt(e.carbs)} · F ${fmt(e.fat)}</div>
       </div>
       <div class="item-kcal"><b>${fmt(e.kcal)}</b><small>kcal</small></div>
     </button>`;
@@ -204,9 +210,12 @@ const UI = (() => {
   $('#nextDay').addEventListener('click', () => { currentDate = Nutrition.addDays(currentDate, 1); renderToday(); });
   $('#datePicker').addEventListener('change', (e) => { if (e.target.value) { currentDate = e.target.value; renderToday(); } });
   $('#copyYesterday').addEventListener('click', () => {
-    const y = Store.entries(Nutrition.addDays(currentDate, -1));
-    y.forEach((e) => Store.addEntry(currentDate, { food: e.food, grams: e.grams, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat }));
-    toast(`Copied ${y.length} item${y.length === 1 ? '' : 's'}`); renderToday();
+    const src = Nutrition.addDays(currentDate, -1);
+    const y = Store.entries(src);
+    logWithDayGuard((dk) => {
+      y.forEach((e) => Store.addEntry(dk, { food: e.food, grams: e.grams, qty: e.qty, sizeG: e.sizeG, unit: e.unit, unitPlural: e.unitPlural, liquid: e.liquid, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat }));
+      toast(`Copied ${y.length} item${y.length === 1 ? '' : 's'} to ${dateLabel(dk).toLowerCase()}`); currentDate = dk; renderToday();
+    });
   });
   $('#dismissInstall').addEventListener('click', () => { localStorage.setItem('fooddiary.installDismissed', '1'); renderToday(); });
   $('#entryList').addEventListener('click', (e) => {
@@ -224,16 +233,31 @@ const UI = (() => {
   }, { passive: true });
 
   /* ===================== FOOD SHEET ===================== */
-  function openFoodSheet(food, { entry = null, onAdd = null, dateKey = null } = {}) {
+  // Work out the "size" options for a food: a unit portion (egg, slice, can…) if known, else grams.
+  function portionFor(food) {
+    if (food.unitG && food.unitName) return { unit: food.unitName, plural: food.unitPlural || food.unitName + 's', g: food.unitG };
+    if (food.source === 'cofid' && typeof Portions !== 'undefined') { const p = Portions.forName(food.name); if (p) return p; }
+    if (food.source === 'recipe' && food.totalG && food.servings) return { unit: 'portion', plural: 'portions', g: Math.round(food.totalG / food.servings) };
+    if (food.servingG) {
+      const lbl = (food.servingLabel || '').toLowerCase();
+      const unit = /can|tin/.test(lbl) ? 'can' : /bottle/.test(lbl) ? 'bottle' : /bar/.test(lbl) ? 'bar' : /slice/.test(lbl) ? 'slice' : /pot/.test(lbl) ? 'pot' : /bag|pack/.test(lbl) ? 'pack' : /piece|biscuit|cookie/.test(lbl) ? 'piece' : 'serving';
+      return { unit, plural: unit === 'serving' ? 'servings' : unit + 's', g: food.servingG };
+    }
+    return null;
+  }
+
+  function openFoodSheet(food, { entry = null, onAdd = null } = {}) {
     const isEdit = !!entry;
-    const grams = isEdit ? entry.grams : (food.servingG || 100);
-    const quick = [];
-    if (food.servingG) quick.push({ label: `1 serving (${fmt(food.servingG)} g)`, g: food.servingG });
-    quick.push({ label: '50 g', g: 50 }, { label: '100 g', g: 100 }, { label: '200 g', g: 200 });
+    const portion = portionFor(food);
+    const isLiquid = /ml|litre|^l$/i.test(food.quantity || '') || /drink|juice|milk|beer|lager|cider|wine|cola|lemonade|smoothie|squash|coffee|tea,/i.test(food.name || '');
+    const gUnit = isLiquid ? 'ml' : 'g';
+    // Initial state: existing entry → its qty/size; else 1 × portion (or 100 g)
+    let qty = isEdit && entry.qty ? entry.qty : 1;
+    let sizeG = isEdit ? (entry.sizeG || entry.grams) : (portion ? portion.g : 100);
+    let mode = isEdit ? (entry.unit ? 'unit' : 'grams') : (portion ? 'unit' : 'grams');
     const packG = parsePackSize(food.quantity);
-    if (packG && !quick.some((q) => q.g === packG)) quick.push({ label: `Whole pack (${fmt(packG)} g)`, g: packG });
-    if (food.totalG && food.servings) quick.push({ label: `1 portion (${fmt(food.totalG / food.servings)} g)`, g: Math.round(food.totalG / food.servings) });
-    const unit = /ml|litre|^l$/i.test(food.quantity || '') || /drink|juice|milk|beer|wine|cola/i.test(food.name || '') ? 'g / ml' : 'g';
+    const gramChips = [50, 100, 200].map((g) => ({ label: `${g} ${gUnit}`, g }));
+    if (packG && !gramChips.some((q) => q.g === packG)) gramChips.push({ label: `Whole pack (${fmt(packG)} ${gUnit})`, g: packG });
     const src = { off: 'Open Food Facts', cofid: 'UK CoFID', custom: 'My food', recipe: 'Recipe' }[food.source] || '';
 
     openSheet(`
@@ -246,16 +270,25 @@ const UI = (() => {
         </div>
         <button class="star ${Store.isFavourite(food.id) ? 'on' : ''}" id="favBtn" aria-label="Favourite">★</button>
       </div>
-      <div class="amount">
-        <button class="btn icon-only" id="gMinus">−</button>
-        <input type="number" id="gramsInput" inputmode="decimal" min="0" step="1" value="${grams}">
-        <span class="unit">${unit}</span>
-        <button class="btn icon-only" id="gPlus">＋</button>
+
+      ${portion ? `<div class="chips mode-chips"><button class="chip ${mode === 'unit' ? 'active' : ''}" data-mode="unit">By ${esc(portion.plural)}</button><button class="chip ${mode === 'grams' ? 'active' : ''}" data-mode="grams">By ${gUnit === 'ml' ? 'ml' : 'grams'}</button></div>` : ''}
+
+      <div class="amount2">
+        <div class="amt-field">
+          <label>Qty</label>
+          <div class="stepper"><button class="btn icon-only" id="qMinus">−</button><input type="number" id="qtyInput" inputmode="decimal" min="0" step="1" value="${qty}"><button class="btn icon-only" id="qPlus">＋</button></div>
+        </div>
+        <div class="amt-x">×</div>
+        <div class="amt-field grow">
+          <label id="sizeLabel"></label>
+          <div class="stepper"><button class="btn icon-only" id="gMinus">−</button><input type="number" id="gramsInput" inputmode="decimal" min="0" step="1" value="${sizeG}"><span class="unit" id="sizeUnit">${gUnit}</span><button class="btn icon-only" id="gPlus">＋</button></div>
+        </div>
       </div>
-      <div class="quick">${quick.map((q) => `<button class="chip" data-g="${q.g}">${esc(q.label)}</button>`).join('')}</div>
+      <div class="quick" id="quickChips"></div>
+      <div class="total-line" id="totalLine"></div>
       <div class="totals" id="totals"></div>
       <table class="ntable">
-        <tr><td>Per 100 ${unit.includes('ml') ? 'g/ml' : 'g'}</td><td></td></tr>
+        <tr><td>Per 100 ${gUnit}</td><td></td></tr>
         <tr><td>Energy</td><td>${fmt(food.kcal)} kcal</td></tr>
         <tr><td>Fat</td><td>${fmt(food.fat, 1)} g</td></tr>
         ${food.satFat != null ? `<tr class="sub"><td>of which saturates</td><td>${fmt(food.satFat, 1)} g</td></tr>` : ''}
@@ -265,46 +298,85 @@ const UI = (() => {
         <tr><td>Protein</td><td>${fmt(food.protein, 1)} g</td></tr>
         ${food.salt != null ? `<tr><td>Salt</td><td>${fmt(food.salt, 2)} g</td></tr>` : ''}
       </table>
-      ${!isEdit && !onAdd ? `<label class="field">Add to<select id="addDate">${dateOptions(dateKey || currentDate)}</select></label>` : ''}
       <div class="sheet-actions">
         ${isEdit ? '<button class="btn danger" id="deleteEntry">Delete</button>' : ''}
+        ${food.source === 'custom' || food.source === 'recipe' ? '<button class="btn icon-only" id="shareBtn" aria-label="Share" title="Share">⇪</button>' : ''}
         ${food.source === 'custom' ? '<button class="btn" id="editCustom">Edit</button>' : ''}
         ${food.source === 'recipe' ? '<button class="btn" id="editRecipe">Edit recipe</button>' : ''}
         <button class="btn primary" id="addBtn">${isEdit ? 'Save' : onAdd ? 'Add ingredient' : 'Add to diary'}</button>
       </div>`);
 
-    const input = $('#gramsInput');
+    const qIn = $('#qtyInput'), gIn = $('#gramsInput');
+    const unitLabel = (n) => (n === 1 ? portion.unit : portion.plural);
+    const drawChips = () => {
+      if (mode === 'unit') {
+        $('#sizeLabel').textContent = `Size of 1 ${portion.unit}`; $('#sizeUnit').textContent = gUnit;
+        $('#quickChips').innerHTML = [1, 2, 3, 4].map((n) => `<button class="chip ${qty === n ? 'active' : ''}" data-q="${n}">${n} ${esc(unitLabel(n))}</button>`).join('');
+      } else {
+        $('#sizeLabel').textContent = 'Amount'; $('#sizeUnit').textContent = gUnit;
+        $('#quickChips').innerHTML = gramChips.map((c) => `<button class="chip ${sizeG === c.g ? 'active' : ''}" data-g="${c.g}">${esc(c.label)}</button>`).join('');
+      }
+    };
     const update = () => {
-      const g = parseFloat(input.value) || 0;
-      const t = Nutrition.scale(food, g);
+      qty = Math.max(0, parseFloat(qIn.value) || 0); sizeG = Math.max(0, parseFloat(gIn.value) || 0);
+      const total = qty * sizeG;
+      const t = Nutrition.scale(food, total);
+      const desc = mode === 'unit' ? `${fmt(qty, 2)} ${unitLabel(qty)} × ${fmt(sizeG)} ${gUnit} = <b>${fmt(total)} ${gUnit}</b>` : qty !== 1 ? `${fmt(qty, 2)} × ${fmt(sizeG)} ${gUnit} = <b>${fmt(total)} ${gUnit}</b>` : `<b>${fmt(total)} ${gUnit}</b>`;
+      $('#totalLine').innerHTML = desc;
       $('#totals').innerHTML = `<div><b>${fmt(t.kcal)}</b><small>kcal</small></div><div><b>${fmt(t.protein, 1)}</b><small>protein g</small></div><div><b>${fmt(t.carbs, 1)}</b><small>carbs g</small></div><div><b>${fmt(t.fat, 1)}</b><small>fat g</small></div>`;
+      drawChips();
     };
     update();
-    input.addEventListener('input', update);
-    $('#gMinus').addEventListener('click', () => { input.value = Math.max(0, (parseFloat(input.value) || 0) - 10); update(); });
-    $('#gPlus').addEventListener('click', () => { input.value = (parseFloat(input.value) || 0) + 10; update(); });
-    $$('.quick .chip').forEach((c) => c.addEventListener('click', () => { input.value = c.dataset.g; update(); }));
+    qIn.addEventListener('input', update); gIn.addEventListener('input', update);
+    $('#qMinus').addEventListener('click', () => { qIn.value = Math.max(0, (parseFloat(qIn.value) || 0) - 1); update(); });
+    $('#qPlus').addEventListener('click', () => { qIn.value = (parseFloat(qIn.value) || 0) + 1; update(); });
+    $('#gMinus').addEventListener('click', () => { gIn.value = Math.max(0, (parseFloat(gIn.value) || 0) - 10); update(); });
+    $('#gPlus').addEventListener('click', () => { gIn.value = (parseFloat(gIn.value) || 0) + 10; update(); });
+    $('#quickChips').addEventListener('click', (e) => {
+      const c = e.target.closest('.chip'); if (!c) return;
+      if (c.dataset.q) qIn.value = c.dataset.q; else if (c.dataset.g) { gIn.value = c.dataset.g; qIn.value = 1; }
+      update();
+    });
+    $$('.mode-chips .chip').forEach((c) => c.addEventListener('click', () => {
+      mode = c.dataset.mode; $$('.mode-chips .chip').forEach((x) => x.classList.toggle('active', x === c));
+      gIn.value = mode === 'unit' ? portion.g : 100; qIn.value = 1; update();
+    }));
     $('#favBtn').addEventListener('click', (e) => { const on = Store.toggleFavourite(food); e.currentTarget.classList.toggle('on', on); toast(on ? 'Added to favourites' : 'Removed from favourites'); });
     if (isEdit) $('#deleteEntry').addEventListener('click', () => { Store.removeEntry(currentDate, entry.id); closeSheet(); renderToday(); toast('Removed'); });
+    if ($('#shareBtn')) $('#shareBtn').addEventListener('click', () => { if (food.source === 'recipe') { const r = Store.state.recipes.find((x) => x.id === food.id); if (r) shareItem('recipe', r); } else shareItem('food', food); });
     if ($('#editCustom')) $('#editCustom').addEventListener('click', () => openCustomFoodSheet(food));
     if ($('#editRecipe')) $('#editRecipe').addEventListener('click', () => { const r = Store.state.recipes.find((x) => x.id === food.id); if (r) openRecipeSheet(r); });
+
+    const buildEntry = () => {
+      const total = qty * sizeG;
+      const t = Nutrition.scale(food, total);
+      return { food: Store.slimFood(food), grams: total, qty, sizeG, unit: mode === 'unit' ? portion.unit : null, unitPlural: mode === 'unit' ? portion.plural : null, liquid: isLiquid, ...t };
+    };
     $('#addBtn').addEventListener('click', () => {
-      const g = parseFloat(input.value) || 0;
-      if (g <= 0) return toast('Enter an amount');
-      const t = Nutrition.scale(food, g);
-      if (onAdd) { closeSheet(true); onAdd(Store.slimFood(food), g); return; }
-      if (isEdit) { Store.updateEntry(currentDate, entry.id, { grams: g, ...t }); closeSheet(); renderToday(); toast('Updated'); return; }
-      const dk = $('#addDate') ? $('#addDate').value : currentDate;
-      Store.addEntry(dk, { food: Store.slimFood(food), grams: g, ...t });
-      closeSheet(); toast(`Added ${fmt(t.kcal)} kcal to ${dateLabel(dk).toLowerCase()}`);
-      currentDate = dk; goto('today');
+      if (qty * sizeG <= 0) return toast('Enter an amount');
+      const e = buildEntry();
+      if (onAdd) { closeSheet(true); onAdd(e.food, e.grams); return; }
+      if (isEdit) { Store.updateEntry(currentDate, entry.id, { grams: e.grams, qty: e.qty, sizeG: e.sizeG, unit: e.unit, unitPlural: e.unitPlural, liquid: e.liquid, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat }); closeSheet(); renderToday(); toast('Updated'); return; }
+      logWithDayGuard((dk) => { Store.addEntry(dk, e); toast(`Added ${fmt(e.kcal)} kcal to ${dateLabel(dk).toLowerCase()}`); currentDate = dk; goto('today'); });
     });
   }
-  function dateOptions(sel) {
+
+  // If the user is viewing a day other than today, confirm where the entry should go before saving.
+  function logWithDayGuard(commit) {
     const today = Nutrition.dateKey(new Date());
-    const keys = [Nutrition.addDays(today, 1), today, Nutrition.addDays(today, -1), Nutrition.addDays(today, -2)];
-    if (!keys.includes(sel)) keys.push(sel);
-    return keys.map((k) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${dateLabel(k)}</option>`).join('');
+    if (currentDate === today) { closeSheet(); commit(today); return; }
+    const viewing = currentDate;
+    openSheet(`
+      <div class="sheet-title"><h2>Which day?</h2></div>
+      <p class="muted">You're viewing <b>${esc(dateLabel(viewing))}</b> (${esc(fullDate(viewing))}). Where should this go?</p>
+      <div class="day-guard">
+        <button class="btn primary block" id="dgToday">Log for today</button>
+        <button class="btn block" id="dgViewing">Log for ${esc(dateLabel(viewing))}</button>
+        <button class="btn ghost block" id="dgCancel">Cancel</button>
+      </div>`);
+    $('#dgToday').addEventListener('click', () => { closeSheet(); commit(today); });
+    $('#dgViewing').addEventListener('click', () => { closeSheet(); commit(viewing); });
+    $('#dgCancel').addEventListener('click', () => closeSheet());
   }
   function parsePackSize(q) {
     if (!q) return null;
@@ -364,7 +436,7 @@ const UI = (() => {
     const s = Store.state;
     const lists = { recents: s.recents, favourites: s.favourites, mine: s.customFoods, recipes: s.recipes.map(Sources.recipeAsFood) };
     const list = lists[addTab] || [];
-    const empties = { recents: 'Foods you log will appear here for quick re-adding.', favourites: 'Tap ★ on any food to keep it here.', mine: 'Create a custom food from a photo of the nutrition label.', recipes: 'Build a recipe once and log it as a single item.' };
+    const empties = { recents: 'Foods you log will appear here for quick re-adding.', favourites: 'Tap ★ on any food to keep it here.', mine: 'Create a custom food from a photo of the nutrition label, or import one a friend shared.', recipes: 'Build a recipe once and log it as a single item — or import one a friend shared.' };
     $('#addContent').innerHTML = list.length ? `<div class="list">${list.map(foodRow).join('')}</div>` : `<div class="empty"><div class="empty-icon">${{ recents: '🕒', favourites: '★', mine: '🏷️', recipes: '🥘' }[addTab]}</div><p>${empties[addTab]}</p></div>`;
     bindFoodRows();
   }
@@ -683,7 +755,7 @@ const UI = (() => {
       const list = Store.entries(day);
       $('#dpList').innerHTML = list.length ? list.map((e) => `<button class="item selectable ${selected.has(e.id) ? 'selected' : ''}" data-pick="${e.id}">
           <span class="check"></span>${thumbHTML(e.food)}
-          <div class="item-main"><div class="item-title">${esc(e.food.name)}</div><div class="item-sub">${e.food.brand ? esc(e.food.brand) + ' · ' : ''}${fmt(e.grams)} g</div></div>
+          <div class="item-main"><div class="item-title">${esc(e.food.name)}</div><div class="item-sub">${e.food.brand ? esc(e.food.brand) + ' · ' : ''}${amountLabel(e)}</div></div>
           <div class="item-kcal"><b>${fmt(e.kcal)}</b><small>kcal</small></div></button>`).join('')
         : `<div class="empty" style="padding:24px"><div class="empty-icon">📭</div><p>Nothing logged on ${dateLabel(day).toLowerCase()}.</p></div>`;
       const allDay = list.length && list.every((e) => selected.has(e.id));
@@ -712,6 +784,99 @@ const UI = (() => {
     });
     $('#dpAdd').addEventListener('click', () => { if (selected.size) { closeSheet(true); onDone([...selected.values()]); } });
   }
+
+  /* ===================== SHARE / IMPORT ===================== */
+  async function shareItem(type, item) {
+    try {
+      const payload = type === 'recipe' ? Share.packRecipe(item) : Share.packFood(item);
+      const code = await Share.encode(payload);
+      const url = Share.shareUrl(code);
+      const summary = type === 'recipe'
+        ? `${item.name} — ${item.servings} serving${item.servings === 1 ? '' : 's'}, ${fmt((item.per100.kcal * (item.totalG || 0)) / 100 / item.servings)} kcal per serving.`
+        : `${item.name}${item.brand ? ' (' + item.brand + ')' : ''} — ${fmt(item.kcal)} kcal per 100 g.`;
+      const text = `${summary}\nOpen in FoodDiary: ${url}\n\nOn iPhone: copy this link, open FoodDiary from your home screen, go to Add → Import and paste it.`;
+      if (navigator.share) {
+        try { await navigator.share({ title: `FoodDiary ${type}: ${item.name}`, text }); return; } catch (e) { if (e.name === 'AbortError') return; }
+      }
+      openSheet(`<div class="sheet-title"><h2>Share ${type}</h2><button class="icon-btn" id="closeSh">✕</button></div>
+        <p class="muted small">Copy this message and send it over WhatsApp, Signal, email — anything. The link contains the whole ${type}.</p>
+        <textarea id="shareText" rows="6" readonly>${esc(text)}</textarea>
+        <div class="sheet-actions"><button class="btn primary" id="copyShare">Copy message</button></div>`);
+      $('#closeSh').addEventListener('click', () => closeSheet());
+      $('#copyShare').addEventListener('click', async () => { try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (e) { $('#shareText').select(); toast('Select and copy the text'); } });
+    } catch (err) { console.error(err); toast('Couldn\u2019t create the share link'); }
+  }
+
+  function openImportSheet(prefill) {
+    openSheet(`<div class="sheet-title"><h2>Import</h2><button class="icon-btn" id="closeIm">✕</button></div>
+      <p class="muted small">Paste a FoodDiary share link or code that someone sent you.</p>
+      <textarea id="importText" rows="4" placeholder="https://…/fooddiary/#share=…">${esc(prefill || '')}</textarea>
+      <div class="sheet-actions"><button class="btn" id="pasteIm">Paste</button><button class="btn primary" id="goIm">Import</button></div>`);
+    $('#closeIm').addEventListener('click', () => closeSheet());
+    $('#pasteIm').addEventListener('click', async () => { try { $('#importText').value = await navigator.clipboard.readText(); } catch (e) { toast('Tap the box and paste'); $('#importText').focus(); } });
+    $('#goIm').addEventListener('click', () => handleShareCode($('#importText').value));
+    setTimeout(() => { const t = $('#importText'); if (t) t.focus(); }, 50);
+  }
+
+  async function handleShareCode(code) {
+    let parsed;
+    try { parsed = await Share.decode(code); } catch (err) { toast(err.message, 3500); return; }
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const item = parsed.type === 'recipe' ? parsed.recipe : parsed.food;
+    const taken = (name) => (parsed.type === 'recipe' ? Store.state.recipes : Store.state.customFoods).some((x) => x.name.trim().toLowerCase() === name.trim().toLowerCase());
+    const kcalLine = parsed.type === 'recipe'
+      ? `${item.servings} serving${item.servings === 1 ? '' : 's'} · ${fmt((item.per100.kcal * (item.totalG || item.ingredients.reduce((a, i) => a + i.grams, 0))) / 100 / item.servings)} kcal per serving`
+      : `${item.brand ? esc(item.brand) + ' · ' : ''}${fmt(item.kcal)} kcal · P ${fmt(item.protein, 1)} · C ${fmt(item.carbs, 1)} · F ${fmt(item.fat, 1)} per 100 g`;
+    openSheet(`<div class="sheet-title"><h2>Import ${parsed.type}</h2><button class="icon-btn" id="closeIm2">✕</button></div>
+      <div class="food-hero"><div class="thumb">${parsed.type === 'recipe' ? '🥘' : '🏷️'}</div><div class="meta"><h2>${esc(item.name)}</h2><p>${kcalLine}</p></div></div>
+      ${parsed.type === 'recipe' ? `<div class="group-title">Ingredients</div><div class="ingredients">${item.ingredients.map((i) => `<div class="ingredient"><span class="name">${esc(i.food.name)}</span><span class="muted small">${fmt(i.grams)} g</span></div>`).join('')}</div>` : ''}
+      <label class="field" style="margin-top:12px">Save as<input type="text" id="importName" value="${esc(item.name)}"></label>
+      <p class="small name-hint" id="nameHint"></p>
+      ${!isStandalone && isIOS ? `<div class="inline-note">📱 Using FoodDiary from your home screen? Import there instead: tap <b>Copy code</b>, open the app, then Add → Import → paste.</div>` : ''}
+      <div class="sheet-actions">${!isStandalone ? '<button class="btn" id="copyCode">Copy code</button>' : ''}<button class="btn primary" id="confirmIm">Add to my ${parsed.type === 'recipe' ? 'recipes' : 'foods'}</button></div>`);
+    $('#closeIm2').addEventListener('click', () => closeSheet());
+    const nameIn = $('#importName'), hint = $('#nameHint'), btn = $('#confirmIm');
+    const check = () => {
+      const v = nameIn.value.trim();
+      const bad = !v || taken(v);
+      nameIn.classList.toggle('invalid', bad);
+      hint.textContent = !v ? 'Give it a name.' : taken(v) ? `You already have a ${parsed.type} called “${v}” — choose a different name.` : '';
+      btn.disabled = bad;
+    };
+    check(); nameIn.addEventListener('input', check);
+    if ($('#copyCode')) $('#copyCode').addEventListener('click', async () => { try { await navigator.clipboard.writeText(String(code).trim()); toast('Code copied — paste it in your FoodDiary app'); } catch (e) { toast('Couldn\u2019t copy'); } });
+    btn.addEventListener('click', () => {
+      const name = nameIn.value.trim(); if (!name || taken(name)) return check();
+      if (parsed.type === 'recipe') {
+        const r = item; r.name = name;
+        r.totalG = r.totalG || r.ingredients.reduce((a, i) => a + i.grams, 0);
+        r.servingG = Math.round(r.totalG / r.servings); r.servingLabel = '1 serving';
+        if (!r.per100) { const tot = Nutrition.sum(r.ingredients.map((x) => Nutrition.scaleExact(x.food, x.grams))); r.per100 = { kcal: Math.round((tot.kcal / r.totalG) * 100), protein: +((tot.protein / r.totalG) * 100).toFixed(1), carbs: +((tot.carbs / r.totalG) * 100).toFixed(1), fat: +((tot.fat / r.totalG) * 100).toFixed(1) }; }
+        const saved = Store.saveRecipe(r);
+        closeSheet(); toast(`Recipe “${name}” added`); addTab = 'recipes';
+        goto('add'); $$('#addTabs .chip').forEach((x) => x.classList.toggle('active', x.dataset.tab === 'recipes')); renderAdd();
+        openFoodSheet(Sources.recipeAsFood(saved));
+      } else {
+        const f = item; f.name = name;
+        const saved = Store.saveCustomFood(f);
+        closeSheet(); toast(`Food “${name}” added`); addTab = 'mine';
+        goto('add'); $$('#addTabs .chip').forEach((x) => x.classList.toggle('active', x.dataset.tab === 'mine')); renderAdd();
+        openFoodSheet(saved);
+      }
+    });
+  }
+
+  // Incoming share link: #share=… in the URL
+  function checkIncomingShare() {
+    const m = location.hash.match(/#share=([^&]+)/);
+    if (!m) return;
+    const code = decodeURIComponent(m[1]);
+    history.replaceState(null, '', location.pathname + location.search); // don't re-import on reload
+    handleShareCode(code);
+  }
+  window.addEventListener('hashchange', checkIncomingShare);
+  $('#importBtn').addEventListener('click', () => openImportSheet(''));
 
   /* ===================== PROGRESS ===================== */
   function weekKeys(offset) {
@@ -845,14 +1010,14 @@ const UI = (() => {
       const tBmi = s.profile.targetBmi || 24.9;
       const targetCell = targetKgLine ? `${tBmi}<small>${fmt(targetKgLine, 1)} kg</small>` : '<span class="muted">Set height in Me</span>';
       const row = (cls, name, kcal, target, date) => `<tr><td><i class="${cls}"></i>${name}</td><td>${kcal}</td><td>${target}</td><td>${date}</td></tr>`;
-      keyHtml = `<div class="ktitle">Forecast <small>next 30 days · when you'd reach your target</small></div><table class="ftable">
+      keyHtml = `<div class="ktitle">Forecast</div><table class="ftable">
         <thead><tr><th></th><th>Daily kcal</th><th>Target BMI</th><th>Forecast date</th></tr></thead>
         <tbody>
           ${row('dashed', 'Plan intake', fmt(s.targets.kcal), targetCell, when(s.targets.kcal))}
           ${endAct ? row('dotted', 'Avg intake', `${fmt(intake.kcal)}<small>${intake.days}-day avg</small>`, targetCell, when(intake.kcal))
                    : row('dotted', 'Avg intake', '<span class="muted">—</span>', targetCell, '<span class="muted">Log food on 3 days</span>')}
         </tbody></table>
-        <p class="ftable-note">Plan intake = eating your calorie target every day. Avg intake = your recent average of what you've logged. Chart shows the next 30 days; in 30 days Plan intake reaches ${fmt(endPlan.kg, 1)} kg${endAct ? `, Avg intake ${fmt(endAct.kg, 1)} kg` : ''}.</p>`;
+        <p class="ftable-note">Plan intake = eating your calorie target every day.<br>Avg intake = your recent average of what you've logged.</p>`;
     } else if (showF && !hasProfile) keyHtml = '<p class="ftable-note">Add your age and height in <b>Me</b> to see a forecast.</p>';
     else if (showF && !baseKg) keyHtml = '<p class="ftable-note">Log a weight to see a forecast.</p>';
     $('#forecastKey').innerHTML = keyHtml;
@@ -1071,6 +1236,7 @@ const UI = (() => {
 
   async function init() {
     renderToday();
+    setTimeout(checkIncomingShare, 0);
     Sources.loadCofid().then((n) => { if (n && $('#view-add').classList.contains('active')) renderAdd(); });
     setupUpdates();
     // Recalculate "Today" when the app returns to foreground (date may have changed)

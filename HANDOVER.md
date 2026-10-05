@@ -18,6 +18,8 @@ Everything the user enters stays on the device (localStorage + IndexedDB). There
 |---|---|
 | `index.html` | App shell — four screens (`#view-today`, `#view-add`, `#view-progress`, `#view-me`), bottom tab bar, a single reusable bottom sheet (`#sheet`) and toast. |
 | `css/styles.css` | Design system. CSS variables at the top; dark mode via `prefers-color-scheme`. Accent green; macro colours protein indigo / carbs amber / fat pink. |
+| `js/portions.js` | Built-in UK portion table (~80 name patterns → unit + grams, e.g. egg 58 g, slice 36 g, rasher 25 g) for CoFID foods, which carry no serving data. `Portions.forName(name)`; has an EXCLUDE list so dishes/juices/dried forms don't get unit portions. |
+| `js/share.js` | Serverless sharing: recipe/custom food → slim JSON → deflate-raw → base64url in `#share=<code>` on the app URL. `Share.encode/decode/packRecipe/packFood`. Data-URL images are stripped; OFF image URLs kept. Imported ingredients become `source:'custom'` snapshots. |
 | `js/nutrition.js` | **Pure functions, no DOM** (also loadable in Node): BMR/targets, macro presets & rebalancing, BMI & healthy range, portion scaling, Open Food Facts → food mapping, CoFID sheet parsing, nutrition-label OCR text parsing, date helpers. |
 | `js/store.js` | Persistence. `Store.state` (localStorage key `fooddiary.v1`, debounced save) + IndexedDB key-value for large blobs. Diary, weights, custom foods, recipes, favourites, recents, OFF cache, backup/restore. |
 | `js/sources.js` | Food data: Open Food Facts API (barcode + name search), bundled CoFID search, custom foods & recipes, unified `search()`. |
@@ -47,7 +49,8 @@ Food objects are per-100 g/ml: `{ id, source ('off'|'cofid'|'custom'|'recipe'), 
 
 **Diary**
 - One flat time-stamped list per day (no Breakfast/Lunch/Dinner sections). Swipe left/right or use arrows to change day; tap the date to pick one.
-- Amounts are entered in grams/ml and scaled from per-100 g values. Quick chips: 1 serving, 50/100/200 g, whole pack (parsed from the OFF `quantity` string), 1 portion for recipes.
+- **Amounts are Qty × Size** (1.12.0). The food sheet has a Qty stepper and a Size field; total = qty × size, scaled from per-100 g values. If the food has a known unit (`portionFor()`: custom `unitG/unitName`, CoFID via `Portions`, recipe portion, or an OFF serving — label text decides can/bottle/bar/slice/pot/pack/piece/serving) it opens in **unit mode** ("By eggs": chips 1–4 eggs, size = g per egg) with a "By grams/ml" toggle; otherwise grams mode (chips 50/100/200, whole pack). Liquids (detected from quantity/name) show ml. Entries store `qty, sizeG, unit, unitPlural, liquid` alongside `grams`; `amountLabel()` renders "3 eggs · 174 g", "2 cans · 660 ml", "2 × 150 g · 300 g" or plain "150 g".
+- **Wrong-day guard** (`logWithDayGuard`, 1.12.0): adding food (or Copy yesterday) while viewing any day other than today opens a sheet — **Log for today** (green, default) / **Log for <viewed day>** / **Cancel**. Viewing today → no prompt. The old "Add to" date dropdown on the food sheet was removed.
 
 **Targets**
 - Calories come from Mifflin–St Jeor × activity factor + goal delta (`Nutrition.calcTargets`), minimum 1,200, rounded to 10. Governed by the **"Calories from profile"** toggle (`targets.auto`).
@@ -60,6 +63,7 @@ Food objects are per-100 g/ml: `{ id, source ('off'|'cofid'|'custom'|'recipe'), 
 **Weight & BMI**
 - **Starting weight** is entered once in Profile, then locked. It becomes the first reading, dated the day it was entered. A **"Correct"** link (with confirm dialog) unlocks it to fix a typo; saving rewrites that first reading only. Logging on the same day as the start updates the starting reading rather than duplicating.
 - **Progress is the only place to log weight.** One reading per calendar day; re-logging the same day **overwrites** and says so ("Today's reading updated: 84.2 → 84.0 kg"; button reads "Update today"). Rationale: intra-day fluctuation makes the trend noisy; the UI nudges "same time each day, ideally first thing". The entry box starts empty with placeholder "Enter today's weight", shows a "kg" suffix once a number is typed, and the Log button is grey/disabled until the value is valid (20–400).
+- Forecast panel heading is just "Forecast"; its note is two lines (Plan intake / Avg intake definitions), no "30 days" sentence (1.12.0).
 - Under the weight chart, a **Recorded** table row: Start kg (with date) · Now kg (with BMI and date) · Kg since start (green when down, red when up). Replaced the earlier KPI pills in 1.10.4. Both this and the forecast table sit in their own tinted panel with a bold title ("Recorded" / "Forecast") so they read as two distinct sections.
 - **Weight forecast** (toggle on the Weight card, on by default, persisted as `showForecast`): 30 days ahead from a **7-day smoothed** starting weight. Two projected lines — **Plan intake** (dashed indigo; eats the calorie target every day) and **Avg intake** (dotted amber; average logged kcal over the last 14 days, needs ≥3 logged days, today excluded) — plus a faint dotted **Target weight** line and a vertical "today" marker. Maths in `Nutrition.projectWeight`: 7,700 kcal/kg, maintenance re-derived daily from projected weight. A compact **table key** under the chart: rows Plan intake / Avg intake (Recorded has its own table above); columns Daily kcal · Target BMI (kg beneath) · Forecast date (estimated date + duration via `Nutrition.daysToTarget`, searched up to 2 years, else 'Not at this pace'). The 30-day end weights are stated in the note under the table.
 - **BMI card** (own card, directly under Weight): BMI value + category; a settable **Target BMI** (default 24.9); a colour scale 12–40 (blue <18.5, green 18.5–24.9, yellow 25–29.9, red 30+) with the **matching weights for the user's height along the top** at 18.5 / 22 / 25 / 30 / 40 and the **BMI values along the bottom**; 22 is shown only as a marker (the old "middle of range" box was removed on request). Markers: **You** = solid dark circle, **Target** = hollow diamond; the bar has 12 px clearance so markers never overlap the label rows. A key lists both with their BMI and kg. Sentence: *"Lose x kg to reach target BMI of 24.9 (80.7 kg)."* / "You're x kg under…" / "right on…".
@@ -71,6 +75,8 @@ Food objects are per-100 g/ml: `{ id, source ('off'|'cofid'|'custom'|'recipe'), 
 - **Custom food form is minimal**: Name, Energy, Protein, Carbs, Fat, then Brand and Barcode (optional) at the bottom, plus the optional product photo. Sat fat / sugars / fibre / salt / serving size are no longer shown or asked for (existing values are preserved on edit).
 - **Custom food from a label photo**: image is downscaled to 1600 px, greyscaled and contrast-stretched, run through Tesseract (`preserve_interword_spaces`), then `Nutrition.parseLabelText` picks the per-100 g column. It **pre-fills, the user confirms** — never auto-saves. Unknown barcodes offer "Create custom food" and remember the barcode so the next scan finds it locally.
 - **Recipes**: ingredients via search/scan **or "From my diary"** — a picker with day chips for the last 7 days (today default, badge shows item counts), tick items, "Select all", selections persist across days; items arrive with the grams that were logged. Per-100 g values are computed from unrounded totals; servings and optional cooked weight set the portion size.
+
+**Sharing (1.13.0)**: ⇪ button on the food sheet for recipes and custom foods → `navigator.share` with a summary + link + iPhone instructions (fallback: copy box). `checkIncomingShare()` reads `#share=` on launch/hashchange and opens the import sheet; **Add → ⇩ Import** lets the user paste a link/code. Import sheet shows a preview, a **Save as** name field pre-filled with the shared name — red border + hint while the name is empty or already used, button disabled — and, when not running as an installed app on iOS, a "Copy code" button plus a note explaining to import inside the home-screen app (iOS opens links in Safari, whose storage is separate). No duplicates/overwrites are ever created.
 
 **Out of scope (deliberately)**: cloud sync, multiple profiles, micronutrient targets (fibre/sugar/salt are shown when known but not tracked), fully automatic label reading without confirmation, Breakfast/Lunch/Dinner grouping. A note under the "Calories from profile" toggle ("Off: targets stay fixed as weight changes") was offered and not yet requested.
 
@@ -92,10 +98,12 @@ Food objects are per-100 g/ml: `{ id, source ('off'|'cofid'|'custom'|'recipe'), 
 2. Bump **all three**: `APP_VERSION` in `js/app.js`, `VERSION` in `sw.js`, "Current version" on line 3 of `README.md`. Patch for tweaks (1.9.1), minor for features (1.10.0).
 3. Syntax check: `node --check js/*.js sw.js`.
 4. Run the smoke tests (§8).
-5. Zip the folder **contents** as `FoodDiary-vX.Y.Z.zip` (the user wants one versioned zip per release and no history — delete the superseded zip). Keep an unpacked `FoodDiary/` folder alongside, mirroring the latest.
+5. Zip the folder **contents** as `FoodDiary-vX.Y.Z.zip`. **Keep the three most recent release zips** in the output folder and delete anything older (owner's rule since 1.13.0; before that only the latest was kept). No unpacked folder alongside.
 6. Tell the owner which files changed; they upload to the GitHub repo via *Add file → Upload files* (folder contents, not the folder). Pages publishes in ~1 min; phones self-update on next open.
 
 ## 8. Testing approach
+
+Test scripts live in `working/tests/` next to the project (`_harness.mjs` boots the app in happy-dom; `regress.mjs` and `qty.mjs` take the project dir as argv[2]). They are not shipped in the zip.
 
 **Local preview**: the owner can double-click `index.html` to review a release before uploading; `location.protocol === 'file:'` disables the service worker/update features and switches the CoFID load to `data/cofid.js`. Keep this path working.
 

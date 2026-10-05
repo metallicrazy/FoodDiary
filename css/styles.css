@@ -383,3 +383,26 @@ input:disabled { opacity: .6; }
 .journey .j-prompt { color: var(--muted); font-size: 14px; display: flex; align-items: center; gap: 10px; }
 .journey .j-prompt .btn { margin-left: auto; }
 .journey.done { background: linear-gradient(135deg, var(--accent-soft), var(--card)); }
+
+/* Qty × size */
+.mode-chips { padding-bottom: 6px; }
+.amount2 { display: flex; align-items: flex-end; gap: 8px; margin: 10px 0 8px; }
+.amt-field { display: flex; flex-direction: column; gap: 4px; }
+.amt-field.grow { flex: 1; min-width: 0; }
+.amt-field label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.amt-x { font-size: 20px; color: var(--muted); padding-bottom: 12px; }
+.stepper { display: flex; align-items: center; gap: 6px; }
+.stepper input { width: 100%; min-width: 56px; font-size: 20px; font-weight: 700; height: 48px; text-align: center; }
+.amt-field:not(.grow) .stepper input { width: 64px; }
+.stepper .btn.icon-only { width: 42px; height: 48px; }
+.stepper .unit { color: var(--muted); font-weight: 600; font-size: 14px; }
+.total-line { font-size: 14px; color: var(--muted); margin: 2px 0 8px; }
+.total-line b { color: var(--text); }
+.quick .chip.active { background: var(--text); color: var(--bg); }
+.day-guard { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+
+/* Share / import */
+textarea#shareText, textarea#importText { width: 100%; font-size: 14px; line-height: 1.4; }
+input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 20%, transparent); }
+.name-hint { color: var(--danger); min-height: 18px; margin: 4px 0 0; }
+.create-row .btn { padding-left: 10px; padding-right: 10px; font-size: 14px; }

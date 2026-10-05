@@ -1,12 +1,13 @@
 # FoodDiary
 
-**Current version: 1.11.2** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
+**Current version: 1.13.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
 
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
 - **Barcode scanning** with the phone camera (or type the number) → product name, photo, calories and macros from **Open Food Facts** (3.5M+ products, strong UK coverage).
 - **UK generic foods** (2,854 items — fruit, veg, meat, cooked dishes) from the UK government's **CoFID / McCance & Widdowson** dataset, built in and searchable offline.
 - **Custom foods from a photo of the nutrition label** — on-device text recognition pre-fills the form, you check and save.
+- **Share recipes and custom foods** with friends over WhatsApp, Signal, email… — the link itself carries the whole recipe (no server). Receiver taps the link (Android) or pastes it into **Add → Import** (iPhone) and it's added to their own list, with a name check so nothing gets overwritten.
 - **Recipes** — build from a food search or pick items straight from your diary (any day in the last week) with the amounts you logged; favourites, recents, copy-yesterday.
 - **Journey card** at the top of Today: progress bar from starting weight to target weight (BMI), % complete, and "at your real intake: on track for <date> — averaging x kcal above/below target". Tap it to open Progress.
 - **Daily targets** (calories, protein, carbs, fat) calculated from your profile (Mifflin–St Jeor) or set manually. Diet-style presets — **Low carb** (default), **Balanced**, **Keto** with a carb-limit slider (10–50 g). Change calories and the macros rescale to keep the same split; edit one macro and the other two adjust to fit. Every change shows **Saved ✓**.
@@ -59,6 +60,9 @@ then upload the new `data/cofid.json` and bump `VERSION` in `sw.js`.
 Unzip the release and **double-click `index.html`** — it opens in your browser and works as a local preview (needs internet for charts, product search and the first-time download of the scanner/OCR libraries). Everything looks and behaves as it will on the phone, with three exceptions that only work on the live https site: install to home screen, offline use, and auto-update. To see the phone layout, use your browser's device/responsive view (Chrome: F12 → the phone icon; Safari: Develop → Enter Responsive Design Mode). Your preview data is stored separately from the phone's, so feel free to add test foods.
 
 ## 4 · Tips
+
+- **Sharing a recipe or custom food:** open it → tap the ⇪ share button → send the message from the share sheet. The link contains everything; nothing is uploaded anywhere.
+- **Receiving one:** on **Android**, tapping the link opens FoodDiary and offers to import. On **iPhone**, links open in Safari rather than the home-screen app, so copy the link, open FoodDiary from your home screen and use **Add → Import → Paste**. (If you only use FoodDiary in Safari, tapping the link works directly.)
 
 - **Scanning:** hold the barcode 10–15 cm from the camera in good light. If a product isn't in Open Food Facts yet, FoodDiary offers to create it from the nutrition label and remembers the barcode.
 - **Label photos:** straight-on, well lit, table filling the frame. Always glance over the numbers — OCR is good, not perfect.
