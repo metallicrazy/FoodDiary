@@ -19,6 +19,8 @@ Everything the user enters stays on the device (localStorage + IndexedDB). There
 | `index.html` | App shell — four screens (`#view-today`, `#view-add`, `#view-progress`, `#view-me`), bottom tab bar, a single reusable bottom sheet (`#sheet`) and toast. |
 | `css/styles.css` | Design system. CSS variables at the top; dark mode via `prefers-color-scheme`. Accent green; macro colours protein indigo / carbs amber / fat pink. |
 | `js/portions.js` | Built-in UK portion table (~80 name patterns → unit + grams, e.g. egg 58 g, slice 36 g, rasher 25 g) for CoFID foods, which carry no serving data. `Portions.forName(name)`; has an EXCLUDE list so dishes/juices/dried forms don't get unit portions. |
+| `js/names.js` | Plain-English titles for CoFID names: `Names.friendly(cofidName)`. ~120 hand-written OVERRIDES for common foods plus rewrite rules (flesh only → peeled / boneless / meat only by food type; 'old' potatoes → dropped; 'boiled in unsalted water' → boiled; cooking word moved to the front; qualifiers in brackets). Applied once at load in `Sources.setCofid`, which also **hides the 198 'weighed with skin/peel/bone' entries**. Each CoFID food keeps `cofidName` (original) alongside `name` (friendly); portions and ranking use `cofidName`, ranking also matches the friendly `alias`. |
+| `js/ranking.js` | Human-feeling ranking for CoFID search: `Ranking.scoreName(query, name, {recent})`. Word-start bonuses, head-of-name match, demotes composite dishes (DISH) and exotic variants (EXOTIC), promotes as-eaten forms, plus a CURATED map of ~100 everyday words → ordered regexes pinned to the top (egg → chicken eggs boiled/raw/fried…). Recents get +8. |
 | `js/share.js` | Serverless sharing: recipe/custom food → slim JSON → deflate-raw → base64url in `#share=<code>` on the app URL. `Share.encode/decode/packRecipe/packFood`. Data-URL images are stripped; OFF image URLs kept. Imported ingredients become `source:'custom'` snapshots. |
 | `js/nutrition.js` | **Pure functions, no DOM** (also loadable in Node): BMR/targets, macro presets & rebalancing, BMI & healthy range, portion scaling, Open Food Facts → food mapping, CoFID sheet parsing, nutrition-label OCR text parsing, date helpers. |
 | `js/store.js` | Persistence. `Store.state` (localStorage key `fooddiary.v1`, debounced save) + IndexedDB key-value for large blobs. Diary, weights, custom foods, recipes, favourites, recents, OFF cache, backup/restore. |
@@ -69,8 +71,13 @@ Food objects are per-100 g/ml: `{ id, source ('off'|'cofid'|'custom'|'recipe'), 
 - **BMI card** (own card, directly under Weight): BMI value + category; a settable **Target BMI** (default 24.9); a colour scale 12–40 (blue <18.5, green 18.5–24.9, yellow 25–29.9, red 30+) with the **matching weights for the user's height along the top** at 18.5 / 22 / 25 / 30 / 40 and the **BMI values along the bottom**; 22 is shown only as a marker (the old "middle of range" box was removed on request). Markers: **You** = solid dark circle, **Target** = hollow diamond; the bar has 12 px clearance so markers never overlap the label rows. A key lists both with their BMI and kg. Sentence: *"Lose x kg to reach target BMI of 24.9 (80.7 kg)."* / "You're x kg under…" / "right on…".
 - **Progress screen order: Weight → BMI → Calories this week → Macros this week.**
 
+**Add screen layout (1.16.0)**: action row (＋ Custom food · ＋ Recipe · ⇩ Import, compact 36 px buttons) sits **above** the filter chips; chip order is Results · Recents · **Recipes** · Favourites · My foods (Recipes third so it's reachable without scrolling the chips). Opening Add does **not** focus the search box — the keyboard appears only when the user taps it (so Recents/Favourites are usable without half the screen covered).
+
+**Photos (1.16.0)**: "📷 Scan nutrition label" keeps `capture="environment"` (opens the camera directly) with a small "choose a label photo from your gallery" link beneath for labels photographed earlier. "📸 Product photo" is a real `<button>` that calls `.click()` on a visually-hidden `<input type=file accept="image/*">` **without** a `capture` attribute — that combination makes Android show its Camera / Gallery chooser and iOS show Take Photo / Photo Library ("phone decides", the owner's choice). The previous markup (input with the `hidden` attribute, triggered via a `<label>`) gave gallery-only on some Android builds, which was the reported bug. Don't add `capture` to the product photo input (camera-only) and don't go back to `hidden` + label.
+
 **Foods**
-- Three sources searched together: user's custom foods & recipes (instant), bundled CoFID UK foods (instant, in-memory scoring by term position), Open Food Facts products (debounced 700 ms / on Enter; the OFF search endpoint is rate-limited to ~10/min, so never search-as-you-type without the debounce). OFF barcode lookups retry 12↔13-digit variants (UPC-A vs EAN-13).
+- **CoFID foods display a friendly name** (`name`) with the official wording retained in `cofidName` — never show `cofidName` to the user (owner's choice: hide it completely).
+- Three sources searched together: user's custom foods & recipes (instant), bundled CoFID UK foods (instant; ranked by `js/ranking.js` — see §2 — so everyday words surface the obvious food first), Open Food Facts products (debounced 700 ms / on Enter; the OFF search endpoint is rate-limited to ~10/min, so never search-as-you-type without the debounce). OFF barcode lookups retry 12↔13-digit variants (UPC-A vs EAN-13).
 - Product images come from OFF (`image_front_small_url`). CoFID foods and recipes get an emoji chosen from the name.
 - **Custom food form is minimal**: Name, Energy, Protein, Carbs, Fat, then Brand and Barcode (optional) at the bottom, plus the optional product photo. Sat fat / sugars / fibre / salt / serving size are no longer shown or asked for (existing values are preserved on edit).
 - **Custom food from a label photo**: image is downscaled to 1600 px, greyscaled and contrast-stretched, run through Tesseract (`preserve_interword_spaces`), then `Nutrition.parseLabelText` picks the per-100 g column. It **pre-fills, the user confirms** — never auto-saves. Unknown barcodes offer "Create custom food" and remember the barcode so the next scan finds it locally.
@@ -96,6 +103,7 @@ Food objects are per-100 g/ml: `{ id, source ('off'|'cofid'|'custom'|'recipe'), 
 
 1. Make the change. Keep `nutrition.js` DOM-free so it stays unit-testable.
 2. Bump **all three**: `APP_VERSION` in `js/app.js`, `VERSION` in `sw.js`, "Current version" on line 3 of `README.md`. Patch for tweaks (1.9.1), minor for features (1.10.0).
+2b. **Update this HANDOVER.md in the same release** — owner's standing instruction (5 Oct 2026). Record any new product decision in §4, new files in §2, data-model changes in §3, and append a line to the changelog in §12. A zip whose handover notes lag the code is a defective release.
 3. Syntax check: `node --check js/*.js sw.js`.
 4. Run the smoke tests (§8).
 5. Zip the folder **contents** as `FoodDiary-vX.Y.Z.zip`. **Keep the three most recent release zips** in the output folder and delete anything older (owner's rule since 1.13.0; before that only the latest was kept). No unpacked folder alongside.
@@ -135,3 +143,23 @@ From a comparison of MacroFactor, Cronometer, Lose It, Yazio, MyFitnessPal and 2
 9. CSV export alongside JSON backup.
 10. Photo meal logging — requires a paid cloud AI; conflicts with the free/no-backend principle.
 Deliberately excluded: streaks/gamification, micronutrient tracking.
+
+## 12. Changelog (one line per release; newest first)
+
+- **1.16.0** — Add screen: action row moved to top (compact), Recipes chip third, no auto-keyboard; product photo offers camera or gallery; label scan gains a gallery option.
+- **1.15.0** — Plain-English CoFID names (`js/names.js`), 'weighed with' variants hidden, search matches friendly names too.
+- **1.14.0** — Human-feeling CoFID search ranking (`js/ranking.js`): curated everyday-word list, dish/exotic demotion, recents boost.
+- **1.13.0** — Share recipes & custom foods as serverless `#share=` links (`js/share.js`), Add → Import with paste, name-clash check (red border), iOS copy-code path. Release retention changed to keep last three zips.
+- **1.12.0** — Qty × size logging; built-in UK portion table (`js/portions.js`) with unit chips; wrong-day confirmation (Log for today / Log for <day> / Cancel) replacing the "Add to" dropdown; Forecast heading plain; two-line forecast note.
+- **1.11.x** — Journey card on Today (start → target bar, %, Current → Target BMI, pace line); trimmed twice to a three-line layout.
+- **1.10.x** — 30-day weight forecast (Plan intake / Avg intake) with table key and target-date column; Recorded table replaced KPI pills; simplified custom-food form; offline load fixed (cache-first SW); local `file://` preview support (`data/cofid.js`).
+- **1.9.x** — BMI markers made distinct (circle vs diamond) with value key; Activity/Goal hidden when calories manual; weight entry UX (empty box, kg suffix, grey→green button, one reading per day with visible overwrite); "kg since start" label.
+- **1.8.0** — Update check bypasses GitHub Pages 10-min cache; version at top of README; troubleshooting section.
+- **1.7.0** — CoFID UK food database bundled (2,854 foods) from owner's spreadsheet via OneDrive.
+- **1.6.0** — Starting weight locked in Profile with Correct link; Progress is the only place to log weight.
+- **1.5.0** — Progress order Weight → BMI → Calories → Macros; BMI in own card.
+- **1.4.0** — BMI bar with weights along top, BMI values along bottom, colour key, settable target BMI (24.9), "Lose x kg to reach target BMI" sentence.
+- **1.3.0** — Auto-update on launch/foreground; Check now button; versioned zip names.
+- **1.2.0** — Recipe ingredients from the last 7 days of diary (day chips, multi-select).
+- **1.1.0** — Diet presets (Low carb default, Balanced, Keto + slider), kcal↔macro rebalancing, Saved ✓ feedback, healthy-weight range on BMI card.
+- **1.0.0** — Initial PWA: barcode scan, Open Food Facts, label OCR custom foods, recipes, favourites/recents, targets, charts, backup.

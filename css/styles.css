@@ -405,4 +405,9 @@ input:disabled { opacity: .6; }
 textarea#shareText, textarea#importText { width: 100%; font-size: 14px; line-height: 1.4; }
 input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 20%, transparent); }
 .name-hint { color: var(--danger); min-height: 18px; margin: 4px 0 0; }
-.create-row .btn { padding-left: 10px; padding-right: 10px; font-size: 14px; }
+
+/* Add page action row (above the filter chips) */
+.action-row { display: flex; gap: 8px; margin: 0 0 10px; }
+.action-row .btn.compact { flex: 1; padding: 8px 6px; font-size: 13.5px; border-radius: 12px; min-height: 36px; white-space: nowrap; }
+.gallery-link { display: block; text-align: center; font-size: 13px; color: var(--muted); margin: -2px 0 8px; }
+.gallery-link input { display: none; }

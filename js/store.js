@@ -104,8 +104,8 @@ const Store = (() => {
     save();
   }
   function slimFood(f) {
-    const { id, source, barcode, name, brand, quantity, servingG, servingLabel, image, kcal, protein, carbs, fat, sugars, satFat, fibre, salt } = f;
-    return { id, source, barcode, name, brand, quantity, servingG, servingLabel, image, kcal, protein, carbs, fat, sugars, satFat, fibre, salt };
+    const { id, source, barcode, name, cofidName, brand, quantity, servingG, servingLabel, image, kcal, protein, carbs, fat, sugars, satFat, fibre, salt, unitName, unitG } = f;
+    return { id, source, barcode, name, cofidName, brand, quantity, servingG, servingLabel, image, kcal, protein, carbs, fat, sugars, satFat, fibre, salt, unitName, unitG };
   }
   function toggleFavourite(food) {
     const i = state.favourites.findIndex((f) => f.id === food.id);

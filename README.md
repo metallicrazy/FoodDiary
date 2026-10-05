@@ -1,10 +1,12 @@
 # FoodDiary
 
-**Current version: 1.13.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
+**Current version: 1.16.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
 
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
 - **Barcode scanning** with the phone camera (or type the number) → product name, photo, calories and macros from **Open Food Facts** (3.5M+ products, strong UK coverage).
+- **Plain-English food names** — the official UK dataset says "Oranges, flesh only" and "Potatoes, old, boiled in unsalted water"; FoodDiary shows "Orange (peeled)" and "Boiled potato".
+- **Search that thinks like you do** — "egg" brings up chicken eggs, "milk" semi-skimmed, "rice" boiled white rice; composite dishes and exotic variants sit lower, and foods you've logged before float up.
 - **UK generic foods** (2,854 items — fruit, veg, meat, cooked dishes) from the UK government's **CoFID / McCance & Widdowson** dataset, built in and searchable offline.
 - **Custom foods from a photo of the nutrition label** — on-device text recognition pre-fills the form, you check and save.
 - **Share recipes and custom foods** with friends over WhatsApp, Signal, email… — the link itself carries the whole recipe (no server). Receiver taps the link (Android) or pastes it into **Add → Import** (iPhone) and it's added to their own list, with a name check so nothing gets overwritten.

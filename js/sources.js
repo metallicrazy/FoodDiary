@@ -33,8 +33,12 @@ const Sources = (() => {
     return cofid.length;
   }
   function setCofid(arr) {
-    cofid = arr || [];
-    cofidIndex = cofid.map((f) => (f.name + ' ' + (f.group || '')).toLowerCase());
+    // Hide "weighed with skin/peel/bone" variants (for weighing before peeling) and give everything a plain-English name.
+    cofid = (arr || []).filter((f) => !/weighed with/i.test(f.cofidName || f.name)).map((f) => {
+      if (f.cofidName) return f; // already processed (e.g. restored from cache)
+      const cofidName = f.name;
+      return Object.assign({}, f, { cofidName, name: (typeof Names !== 'undefined' ? Names.friendly(cofidName) : cofidName) });
+    });
   }
   async function importCofidWorkbook(arrayBuffer) {
     if (typeof XLSX === 'undefined') await loadScript('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js');
@@ -51,17 +55,12 @@ const Sources = (() => {
   }
   function searchCofid(q, limit = 25) {
     if (!q || !cofid.length) return [];
-    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const recentIds = new Set((typeof Store !== 'undefined' ? Store.state.recents : []).map((f) => f.id));
     const scored = [];
     for (let i = 0; i < cofid.length; i++) {
-      const name = cofidIndex[i];
-      let score = 0, ok = true;
-      for (const t of terms) {
-        const idx = name.indexOf(t);
-        if (idx < 0) { ok = false; break; }
-        score += idx === 0 ? 3 : (name[idx - 1] === ' ' || name[idx - 1] === ',') ? 2 : 1;
-      }
-      if (ok) scored.push({ f: cofid[i], score: score - name.length / 200 });
+      const f = cofid[i];
+      const sc = Ranking.scoreName(q, f.cofidName || f.name, { recent: recentIds.has(f.id), alias: f.name });
+      if (sc > -Infinity) scored.push({ f, score: sc });
     }
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, limit).map((s) => s.f);

@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.13.0';
+  const APP_VERSION = '1.16.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -54,7 +54,7 @@ const UI = (() => {
     $$('.tabbar .tab').forEach((t) => t.classList.toggle('active', t.dataset.goto === view));
     window.scrollTo({ top: 0 });
     if (view === 'today') renderToday();
-    if (view === 'add') { renderAdd(); setTimeout(() => { if (!lastQuery) $('#searchInput').focus({ preventScroll: true }); }, 50); }
+    if (view === 'add') renderAdd(); // keyboard only when the user taps the search box
     if (view === 'progress') renderProgress();
     if (view === 'me') renderMe();
   }
@@ -236,7 +236,7 @@ const UI = (() => {
   // Work out the "size" options for a food: a unit portion (egg, slice, can…) if known, else grams.
   function portionFor(food) {
     if (food.unitG && food.unitName) return { unit: food.unitName, plural: food.unitPlural || food.unitName + 's', g: food.unitG };
-    if (food.source === 'cofid' && typeof Portions !== 'undefined') { const p = Portions.forName(food.name); if (p) return p; }
+    if (food.source === 'cofid' && typeof Portions !== 'undefined') { const p = Portions.forName(food.cofidName || food.name); if (p) return p; }
     if (food.source === 'recipe' && food.totalG && food.servings) return { unit: 'portion', plural: 'portions', g: Math.round(food.totalG / food.servings) };
     if (food.servingG) {
       const lbl = (food.servingLabel || '').toLowerCase();
@@ -554,8 +554,9 @@ const UI = (() => {
       <div class="sheet-title"><h2>${isEdit ? 'Edit food' : 'New custom food'}</h2><button class="icon-btn" id="closeCF">✕</button></div>
       <div class="row-btns">
         <label class="btn primary file-btn">📷 Scan nutrition label<input type="file" id="labelPhoto" accept="image/*" capture="environment" hidden></label>
-        <label class="btn ghost file-btn">🖼️ Product photo<input type="file" id="productPhoto" accept="image/*" hidden></label>
+        <button class="btn ghost" id="productPhotoBtn" type="button">📸 Product photo</button><input type="file" id="productPhoto" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
       </div>
+      <label class="gallery-link">or <u>choose a label photo from your gallery</u><input type="file" id="labelPhotoGallery" accept="image/*"></label>
       <div id="ocrBox"></div>
       <div class="food-hero" id="cfHero">${thumbHTML(f)}<div class="meta"><p class="muted small">Values are per 100 g (or 100 ml). Check anything read from the label before saving.</p></div></div>
       <div class="form-grid">
@@ -573,12 +574,18 @@ const UI = (() => {
       </div>`);
     $('#closeCF').addEventListener('click', () => closeSheet());
     let image = f.image || null;
+    // Opened via a real click so Android shows its Camera / Gallery chooser (a hidden input behind a <label> sometimes gets gallery only)
+    $('#productPhotoBtn').addEventListener('click', () => $('#productPhoto').click());
     $('#productPhoto').addEventListener('change', async (e) => {
       const file = e.target.files[0]; if (!file) return;
       image = await fileToDataURL(file, 256, 0.8);
       $('#cfHero .thumb').innerHTML = `<img src="${image}" alt="">`;
     });
     $('#labelPhoto').addEventListener('change', async (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      await runLabelOCR(file);
+    });
+    $('#labelPhotoGallery').addEventListener('change', async (e) => {
       const file = e.target.files[0]; if (!file) return;
       await runLabelOCR(file);
     });
