@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.16.2';
+  const APP_VERSION = '1.16.4';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -553,8 +553,8 @@ const UI = (() => {
     openSheet(`
       <div class="sheet-title"><h2>${isEdit ? 'Edit food' : 'New custom food'}</h2><button class="icon-btn" id="closeCF">✕</button></div>
       <div class="row-btns">
-        <button class="btn primary" id="labelPhotoBtn" type="button">📷 Scan nutrition label</button>
-        <button class="btn ghost" id="productPhotoBtn" type="button">📸 Product photo</button>
+        <button class="btn ghost photo-btn" id="labelPhotoBtn" type="button">📷 Scan nutrition label</button>
+        <button class="btn ghost photo-btn" id="productPhotoBtn" type="button">📸 Product photo</button>
         <input type="file" id="labelPhotoCam" accept="image/*" capture="environment" class="hidden-file">
         <input type="file" id="labelPhoto" accept="image/*" class="hidden-file">
         <input type="file" id="productPhotoCam" accept="image/*" capture="environment" class="hidden-file">
@@ -591,17 +591,21 @@ const UI = (() => {
     const onLabelPhoto = async (e) => { const file = e.target.files[0]; if (!file) return; e.target.value = ''; await runLabelOCR(file); };
     $('#labelPhotoCam').addEventListener('change', onLabelPhoto);
     $('#labelPhoto').addEventListener('change', onLabelPhoto);
-    function photoChooser(title, camInput, galInput) {
+    function photoChooser(title, camInput, galInput, srcBtn) {
       const host = $('#photoChooser');
-      host.innerHTML = `<div class="choice-pop"><div class="choice-title">${esc(title)}</div><button class="btn primary block" data-c="cam">📷 Take photo</button><button class="btn block" data-c="gal">🖼️ Choose from gallery</button><button class="btn ghost block" data-c="x">Cancel</button></div>`;
+      const close = () => { host.innerHTML = ''; $$('.photo-btn').forEach((b) => b.classList.remove('selected')); };
+      // Tapping the same button again closes the chooser
+      if (srcBtn.classList.contains('selected')) { close(); return; }
+      $$('.photo-btn').forEach((b) => b.classList.toggle('selected', b === srcBtn));
+      host.innerHTML = `<div class="choice-pop"><div class="choice-title">${esc(title)}</div><button class="btn primary block" data-c="cam">📷 Take photo</button><button class="btn outline block" data-c="gal">🖼️ Choose from gallery</button><button class="btn text-btn block" data-c="x">Cancel</button></div>`;
       host.onclick = (ev) => {
         const b = ev.target.closest('[data-c]'); if (!b) return;
-        host.innerHTML = '';
+        close();
         if (b.dataset.c === 'cam') camInput.click(); else if (b.dataset.c === 'gal') galInput.click();
       };
     }
-    $('#labelPhotoBtn').addEventListener('click', () => photoChooser('Nutrition label', $('#labelPhotoCam'), $('#labelPhoto')));
-    $('#productPhotoBtn').addEventListener('click', () => photoChooser('Product photo', $('#productPhotoCam'), $('#productPhoto')));
+    $('#labelPhotoBtn').addEventListener('click', (e) => photoChooser('Nutrition label', $('#labelPhotoCam'), $('#labelPhoto'), e.currentTarget));
+    $('#productPhotoBtn').addEventListener('click', (e) => photoChooser('Product photo', $('#productPhotoCam'), $('#productPhoto'), e.currentTarget));
     async function runLabelOCR(file) {
       const box = $('#ocrBox');
       try {
@@ -692,8 +696,12 @@ const UI = (() => {
         <button class="btn primary" id="rSave">Save recipe</button>
       </div>`);
     $('#closeR').addEventListener('click', () => closeSheet());
-    const draw = () => {
+    // Rebuild the ingredient rows only when the list itself changes (add/remove).
+    // Typing in a gram box must NOT rebuild the rows — that replaces the focused box and closes the keyboard.
+    const drawList = () => {
       $('#rIngredients').innerHTML = r.ingredients.map((ing, i) => `<div class="ingredient"><span class="name">${esc(ing.food.name)}</span><input type="number" data-i="${i}" value="${ing.grams}" inputmode="decimal"><span class="muted small">g</span><button class="x" data-del="${i}">✕</button></div>`).join('') || '<p class="muted small">No ingredients yet.</p>';
+    };
+    const drawTotals = () => {
       const sumG = r.ingredients.reduce((a, x) => a + (x.grams || 0), 0);
       const tot = Nutrition.sum(r.ingredients.map((x) => Nutrition.scale(x.food, x.grams)));
       const servings = Math.max(1, parseInt($('#rServings').value, 10) || 1);
@@ -702,10 +710,12 @@ const UI = (() => {
       $('#rPer').textContent = sumG ? `${fmt(totalG)} g total → ${fmt(tot.kcal / servings)} kcal per serving (${fmt(totalG / servings)} g). Per 100 g: ${fmt((tot.kcal / totalG) * 100)} kcal.` : '';
       $('#rTotal').placeholder = sumG ? `auto (${fmt(sumG)})` : 'auto';
     };
+
+    const draw = () => { drawList(); drawTotals(); };
     draw();
-    $('#rIngredients').addEventListener('input', (e) => { const i = e.target.dataset.i; if (i !== undefined) { r.ingredients[i].grams = parseFloat(e.target.value) || 0; draw(); } });
+    $('#rIngredients').addEventListener('input', (e) => { const i = e.target.dataset.i; if (i !== undefined) { r.ingredients[i].grams = parseFloat(e.target.value) || 0; drawTotals(); } });
     $('#rIngredients').addEventListener('click', (e) => { const d = e.target.closest('[data-del]'); if (d) { r.ingredients.splice(+d.dataset.del, 1); draw(); } });
-    $('#rServings').addEventListener('input', draw); $('#rTotal').addEventListener('input', draw);
+    $('#rServings').addEventListener('input', drawTotals); $('#rTotal').addEventListener('input', drawTotals);
     const snapshot = () => Object.assign(r, { name: $('#rName').value, servings: parseInt($('#rServings').value, 10) || r.servings, totalG: parseFloat($('#rTotal').value) || null });
     $('#rAddIng').addEventListener('click', () => { snapshot(); openIngredientPicker((food, grams) => { r.ingredients.push({ food, grams }); openRecipeSheet(r); }, r); });
     $('#rFromDiary').addEventListener('click', () => { snapshot(); openDiaryPicker((items) => { items.forEach((x) => r.ingredients.push(x)); openRecipeSheet(r); toast(`Added ${items.length} item${items.length === 1 ? '' : 's'} from your diary`); }, r); });

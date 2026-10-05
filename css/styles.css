@@ -415,3 +415,10 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 .row-btns { flex-wrap: wrap; }
 .hidden-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .choice-pop .choice-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 0 2px 2px; }
+
+/* Photo buttons: neutral until chosen; the chosen one turns green while its options are open */
+.photo-btn { border: 2px solid transparent; }
+.photo-btn.selected { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+.btn.outline { background: var(--card); color: var(--text); border: 2px solid var(--accent); box-shadow: var(--shadow); }
+.btn.text-btn { background: none; color: var(--muted); font-weight: 600; min-height: 36px; padding: 6px; }
+.choice-pop { border: 1px solid var(--line); }

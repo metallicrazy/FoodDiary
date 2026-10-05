@@ -73,7 +73,7 @@ Food objects are per-100 g/ml: `{ id, source ('off'|'cofid'|'custom'|'recipe'), 
 
 **Add screen layout (1.16.0)**: action row (＋ Custom food · ＋ Recipe · ⇩ Import, compact 36 px buttons) sits **above** the filter chips; chip order is Results · Recents · **Recipes** · Favourites · My foods (Recipes third so it's reachable without scrolling the chips). Opening Add does **not** focus the search box — the keyboard appears only when the user taps it (so Recents/Favourites are usable without half the screen covered).
 
-**Photos (1.16.2)**: both "📷 Scan nutrition label" and "📸 Product photo" open the same in-app chooser (`photoChooser()` → `.choice-pop` with a small title): **Take photo** clicks a hidden `<input type=file capture="environment">`, **Choose from gallery** clicks one without `capture`. Four hidden inputs (`labelPhotoCam/labelPhoto/productPhotoCam/productPhoto`, class `.hidden-file`). Reason: a capture-less input doesn't reliably show Android's camera/gallery chooser (owner's phone went gallery-only), and `capture` is camera-only; explicit choice is the only consistent behaviour. The earlier "or choose from gallery" link was removed as redundant.
+**Photos (1.16.2)**: both "📷 Scan nutrition label" and "📸 Product photo" open the same in-app chooser (`photoChooser()` → `.choice-pop` with a small title): **Take photo** clicks a hidden `<input type=file capture="environment">`, **Choose from gallery** clicks one without `capture`. Four hidden inputs (`labelPhotoCam/labelPhoto/productPhotoCam/productPhoto`, class `.hidden-file`). Reason: a capture-less input doesn't reliably show Android's camera/gallery chooser (owner's phone went gallery-only), and `capture` is camera-only; explicit choice is the only consistent behaviour. The earlier "or choose from gallery" link was removed as redundant. Styling (1.16.3): both photo buttons are neutral (`.photo-btn`) by default; the tapped one turns green (`.selected`) while its chooser is open, tapping it again closes the chooser; inside the chooser Take photo = green primary, Choose from gallery = white button with green outline (`.btn.outline`), Cancel = plain text (`.text-btn`).
 
 **Foods**
 - **CoFID foods display a friendly name** (`name`) with the official wording retained in `cofidName` — never show `cofidName` to the user (owner's choice: hide it completely).
@@ -118,6 +118,10 @@ Test scripts live in `working/tests/` next to the project (`_harness.mjs` boots 
 
 No browser is available in the build environment, so UI flows are exercised with **happy-dom** in Node: load `index.html` body, stub `indexedDB`, `fetch`, `matchMedia`, `Chart`, `canvas.getContext`, `confirm`, then `window.eval` the four JS files concatenated and drive the DOM (`dispatchEvent(new window.Event('change'))`, `.click()`). Scripts used so far covered: profile → targets, presets/keto/rebalance, add/edit/delete diary entries, search, recipe builder and diary picker, weight logging/overwrite, starting-weight lock/correct, BMI card text, backup/restore, auto-update hooks, CoFID search over the bundled data. A consolidated regression script (`/tmp/regress.mjs` pattern — recreate from §8 if lost) covers these flows. Camera scanning and OCR cannot be tested headlessly — they rely on well-known libraries and have been reasoned about, not run; expect to tune lighting/distance guidance from real-world feedback.
 
+## 8b. UI rule learned the hard way
+
+Never re-render (`innerHTML =`) a container that holds the input the user is typing in, from that input's own `input` event. It replaces the focused element, so mobile browsers drop focus and close the keyboard after one keystroke. Split rendering into a structural redraw (on add/remove) and a values-only refresh (on typing). The recipe editor uses `drawList()` / `drawTotals()` for this (fixed 1.16.4).
+
 ## 9. Design language
 
 Modern, clean, "not an engineering demo": 18 px radius cards with soft shadows, system font stack, generous spacing, a hero calorie **ring** (SVG, `stroke-dashoffset`) with macro **progress bars** that read "x g left" / "x g over" (bars turn red when over), Chart.js charts with rounded bars and a dashed target line, a bottom **sheet** for every detail/edit flow, pill chips, a frosted tab bar. Light/dark follows the OS. Icons were generated with Python Pillow (green gradient, white ring, fork & knife) at 192/512/maskable 512/180 px.
@@ -146,6 +150,8 @@ Deliberately excluded: streaks/gamification, micronutrient tracking.
 
 ## 12. Changelog (one line per release; newest first)
 
+- **1.16.4** — Fix: recipe editor no longer closes the keyboard after one character (typing redrew the ingredient rows; now only totals refresh).
+- **1.16.3** — Photo buttons neutral by default, selected one turns green; gallery option styled as an outlined button.
 - **1.16.2** — Label scan uses the same Take photo / Choose from gallery chooser; gallery link removed.
 - **1.16.1** — Product photo: explicit Take photo / Choose from gallery chooser (Android gave gallery-only without `capture`).
 - **1.16.0** — Add screen: action row moved to top (compact), Recipes chip third, no auto-keyboard; product photo offers camera or gallery; label scan gains a gallery option.
