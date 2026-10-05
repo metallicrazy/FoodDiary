@@ -409,5 +409,9 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 /* Add page action row (above the filter chips) */
 .action-row { display: flex; gap: 8px; margin: 0 0 10px; }
 .action-row .btn.compact { flex: 1; padding: 8px 6px; font-size: 13.5px; border-radius: 12px; min-height: 36px; white-space: nowrap; }
-.gallery-link { display: block; text-align: center; font-size: 13px; color: var(--muted); margin: -2px 0 8px; }
-.gallery-link input { display: none; }
+
+.choice-pop { display: flex; flex-direction: column; gap: 6px; width: 100%; background: var(--card-2); border-radius: 14px; padding: 10px; margin: 4px 0 8px; animation: fade .15s ease; }
+.choice-pop .btn { min-height: 44px; }
+.row-btns { flex-wrap: wrap; }
+.hidden-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.choice-pop .choice-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 0 2px 2px; }

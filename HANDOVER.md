@@ -73,7 +73,7 @@ Food objects are per-100 g/ml: `{ id, source ('off'|'cofid'|'custom'|'recipe'), 
 
 **Add screen layout (1.16.0)**: action row (＋ Custom food · ＋ Recipe · ⇩ Import, compact 36 px buttons) sits **above** the filter chips; chip order is Results · Recents · **Recipes** · Favourites · My foods (Recipes third so it's reachable without scrolling the chips). Opening Add does **not** focus the search box — the keyboard appears only when the user taps it (so Recents/Favourites are usable without half the screen covered).
 
-**Photos (1.16.0)**: "📷 Scan nutrition label" keeps `capture="environment"` (opens the camera directly) with a small "choose a label photo from your gallery" link beneath for labels photographed earlier. "📸 Product photo" is a real `<button>` that calls `.click()` on a visually-hidden `<input type=file accept="image/*">` **without** a `capture` attribute — that combination makes Android show its Camera / Gallery chooser and iOS show Take Photo / Photo Library ("phone decides", the owner's choice). The previous markup (input with the `hidden` attribute, triggered via a `<label>`) gave gallery-only on some Android builds, which was the reported bug. Don't add `capture` to the product photo input (camera-only) and don't go back to `hidden` + label.
+**Photos (1.16.2)**: both "📷 Scan nutrition label" and "📸 Product photo" open the same in-app chooser (`photoChooser()` → `.choice-pop` with a small title): **Take photo** clicks a hidden `<input type=file capture="environment">`, **Choose from gallery** clicks one without `capture`. Four hidden inputs (`labelPhotoCam/labelPhoto/productPhotoCam/productPhoto`, class `.hidden-file`). Reason: a capture-less input doesn't reliably show Android's camera/gallery chooser (owner's phone went gallery-only), and `capture` is camera-only; explicit choice is the only consistent behaviour. The earlier "or choose from gallery" link was removed as redundant.
 
 **Foods**
 - **CoFID foods display a friendly name** (`name`) with the official wording retained in `cofidName` — never show `cofidName` to the user (owner's choice: hide it completely).
@@ -146,6 +146,8 @@ Deliberately excluded: streaks/gamification, micronutrient tracking.
 
 ## 12. Changelog (one line per release; newest first)
 
+- **1.16.2** — Label scan uses the same Take photo / Choose from gallery chooser; gallery link removed.
+- **1.16.1** — Product photo: explicit Take photo / Choose from gallery chooser (Android gave gallery-only without `capture`).
 - **1.16.0** — Add screen: action row moved to top (compact), Recipes chip third, no auto-keyboard; product photo offers camera or gallery; label scan gains a gallery option.
 - **1.15.0** — Plain-English CoFID names (`js/names.js`), 'weighed with' variants hidden, search matches friendly names too.
 - **1.14.0** — Human-feeling CoFID search ranking (`js/ranking.js`): curated everyday-word list, dish/exotic demotion, recents boost.

@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.16.0';
+  const APP_VERSION = '1.16.2';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -553,10 +553,14 @@ const UI = (() => {
     openSheet(`
       <div class="sheet-title"><h2>${isEdit ? 'Edit food' : 'New custom food'}</h2><button class="icon-btn" id="closeCF">✕</button></div>
       <div class="row-btns">
-        <label class="btn primary file-btn">📷 Scan nutrition label<input type="file" id="labelPhoto" accept="image/*" capture="environment" hidden></label>
-        <button class="btn ghost" id="productPhotoBtn" type="button">📸 Product photo</button><input type="file" id="productPhoto" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+        <button class="btn primary" id="labelPhotoBtn" type="button">📷 Scan nutrition label</button>
+        <button class="btn ghost" id="productPhotoBtn" type="button">📸 Product photo</button>
+        <input type="file" id="labelPhotoCam" accept="image/*" capture="environment" class="hidden-file">
+        <input type="file" id="labelPhoto" accept="image/*" class="hidden-file">
+        <input type="file" id="productPhotoCam" accept="image/*" capture="environment" class="hidden-file">
+        <input type="file" id="productPhoto" accept="image/*" class="hidden-file">
       </div>
-      <label class="gallery-link">or <u>choose a label photo from your gallery</u><input type="file" id="labelPhotoGallery" accept="image/*"></label>
+      <div id="photoChooser"></div>
       <div id="ocrBox"></div>
       <div class="food-hero" id="cfHero">${thumbHTML(f)}<div class="meta"><p class="muted small">Values are per 100 g (or 100 ml). Check anything read from the label before saving.</p></div></div>
       <div class="form-grid">
@@ -574,21 +578,30 @@ const UI = (() => {
       </div>`);
     $('#closeCF').addEventListener('click', () => closeSheet());
     let image = f.image || null;
-    // Opened via a real click so Android shows its Camera / Gallery chooser (a hidden input behind a <label> sometimes gets gallery only)
-    $('#productPhotoBtn').addEventListener('click', () => $('#productPhoto').click());
-    $('#productPhoto').addEventListener('change', async (e) => {
+    // Android doesn't reliably offer a camera/gallery chooser for a plain file input, so ask explicitly.
+    // "Take photo" clicks an input with capture="environment"; "Choose" clicks a plain one. Same chooser for both buttons.
+    const onProductPhoto = async (e) => {
       const file = e.target.files[0]; if (!file) return;
       image = await fileToDataURL(file, 256, 0.8);
       $('#cfHero .thumb').innerHTML = `<img src="${image}" alt="">`;
-    });
-    $('#labelPhoto').addEventListener('change', async (e) => {
-      const file = e.target.files[0]; if (!file) return;
-      await runLabelOCR(file);
-    });
-    $('#labelPhotoGallery').addEventListener('change', async (e) => {
-      const file = e.target.files[0]; if (!file) return;
-      await runLabelOCR(file);
-    });
+      e.target.value = '';
+    };
+    $('#productPhotoCam').addEventListener('change', onProductPhoto);
+    $('#productPhoto').addEventListener('change', onProductPhoto);
+    const onLabelPhoto = async (e) => { const file = e.target.files[0]; if (!file) return; e.target.value = ''; await runLabelOCR(file); };
+    $('#labelPhotoCam').addEventListener('change', onLabelPhoto);
+    $('#labelPhoto').addEventListener('change', onLabelPhoto);
+    function photoChooser(title, camInput, galInput) {
+      const host = $('#photoChooser');
+      host.innerHTML = `<div class="choice-pop"><div class="choice-title">${esc(title)}</div><button class="btn primary block" data-c="cam">📷 Take photo</button><button class="btn block" data-c="gal">🖼️ Choose from gallery</button><button class="btn ghost block" data-c="x">Cancel</button></div>`;
+      host.onclick = (ev) => {
+        const b = ev.target.closest('[data-c]'); if (!b) return;
+        host.innerHTML = '';
+        if (b.dataset.c === 'cam') camInput.click(); else if (b.dataset.c === 'gal') galInput.click();
+      };
+    }
+    $('#labelPhotoBtn').addEventListener('click', () => photoChooser('Nutrition label', $('#labelPhotoCam'), $('#labelPhoto')));
+    $('#productPhotoBtn').addEventListener('click', () => photoChooser('Product photo', $('#productPhotoCam'), $('#productPhoto')));
     async function runLabelOCR(file) {
       const box = $('#ocrBox');
       try {
