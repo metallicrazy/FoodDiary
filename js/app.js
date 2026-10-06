@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.16.4';
+  const APP_VERSION = '1.17.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -77,6 +77,17 @@ const UI = (() => {
     return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   }
 
+  // One sentence about distance to the target BMI. Shared by the Progress BMI card and the Today journey card.
+  function bmiTargetMessage(kg, profile) {
+    const h = profile.heightCm; if (!kg || !h) return '';
+    const targetBmi = profile.targetBmi || 24.9;
+    const targetKg = Math.round(targetBmi * (h / 100) ** 2 * 10) / 10;
+    const diff = Math.round((kg - targetKg) * 10) / 10;
+    if (diff > 0.05) return `Lose <b>${fmt(diff, 1)} kg</b> to reach target BMI of ${targetBmi} (${fmt(targetKg, 1)} kg).`;
+    if (diff < -0.05) return `You're <b>${fmt(-diff, 1)} kg</b> under your target BMI of ${targetBmi} (${fmt(targetKg, 1)} kg).`;
+    return `You're right on your target BMI of ${targetBmi} (${fmt(targetKg, 1)} kg).`;
+  }
+
   function renderJourney() {
     const s = Store.state, p = s.profile, el = $('#journeyCard');
     const latest = Store.latestWeight();
@@ -126,7 +137,7 @@ const UI = (() => {
         <b class="j-end">${fmt(targetKg, 1)} kg</b>
         <span class="j-pct ${reached ? 'done' : wrongWay ? 'over' : ''}">(${pctText})</span>
       </div>
-      <div class="j-bmi">Current BMI <b>${curBmi}</b> → Target BMI <b>${p.targetBmi || 24.9}</b></div>
+      ${reached ? '' : `<div class="j-bmi">${bmiTargetMessage(now, p)}</div>`}
       ${note || paceHtml ? `<p class="j-line">${note}${reached ? '' : paceHtml}</p>` : ''}`;
   }
 
@@ -681,6 +692,16 @@ const UI = (() => {
     const isEdit = !!(recipe && recipe.id);
     openSheet(`
       <div class="sheet-title"><h2>${isEdit ? 'Edit recipe' : 'New recipe'}</h2><button class="icon-btn" id="closeR">✕</button></div>
+      <div class="recipe-photo">
+        <div class="thumb" id="rThumb">${r.image ? `<img src="${esc(r.image)}" alt="">` : '🥘'}</div>
+        <div class="recipe-photo-btns">
+          <button class="btn ghost photo-btn" id="rPhotoBtn" type="button">📸 ${r.image ? 'Change photo' : 'Add photo'}</button>
+          ${r.image ? '<button class="btn text-btn" id="rPhotoRemove" type="button">Remove photo</button>' : ''}
+        </div>
+        <input type="file" id="rPhotoCam" accept="image/*" capture="environment" class="hidden-file">
+        <input type="file" id="rPhotoGal" accept="image/*" class="hidden-file">
+      </div>
+      <div id="rPhotoChooser"></div>
       <div class="form-grid">
         <label class="span2">Recipe name<input type="text" id="rName" value="${esc(r.name)}" placeholder="e.g. Chicken curry"></label>
         <label>Servings<input type="number" id="rServings" inputmode="numeric" min="1" value="${r.servings}"></label>
@@ -696,6 +717,31 @@ const UI = (() => {
         <button class="btn primary" id="rSave">Save recipe</button>
       </div>`);
     $('#closeR').addEventListener('click', () => closeSheet());
+    // Recipe photo: same Take photo / Choose from gallery chooser as custom foods
+    const setRecipePhoto = (img) => {
+      r.image = img;
+      $('#rThumb').innerHTML = img ? `<img src="${esc(img)}" alt="">` : '🥘';
+      $('#rPhotoBtn').textContent = img ? '📸 Change photo' : '📸 Add photo';
+      const rm = $('#rPhotoRemove');
+      if (img && !rm) $('#rPhotoBtn').insertAdjacentHTML('afterend', '<button class="btn text-btn" id="rPhotoRemove" type="button">Remove photo</button>');
+      if (!img && rm) rm.remove();
+    };
+    const onRecipePhoto = async (e) => { const file = e.target.files[0]; if (!file) return; e.target.value = ''; setRecipePhoto(await fileToDataURL(file, 256, 0.8)); };
+    $('#rPhotoCam').addEventListener('change', onRecipePhoto);
+    $('#rPhotoGal').addEventListener('change', onRecipePhoto);
+    $('.recipe-photo').addEventListener('click', (e) => { if (e.target.closest('#rPhotoRemove')) setRecipePhoto(null); });
+    $('#rPhotoBtn').addEventListener('click', () => {
+      const host = $('#rPhotoChooser'), btn = $('#rPhotoBtn');
+      const close = () => { host.innerHTML = ''; btn.classList.remove('selected'); };
+      if (btn.classList.contains('selected')) return close();
+      btn.classList.add('selected');
+      host.innerHTML = `<div class="choice-pop"><div class="choice-title">Recipe photo</div><button class="btn primary block" data-c="cam">📷 Take photo</button><button class="btn outline block" data-c="gal">🖼️ Choose from gallery</button><button class="btn text-btn block" data-c="x">Cancel</button></div>`;
+      host.onclick = (ev) => {
+        const b = ev.target.closest('[data-c]'); if (!b) return;
+        close();
+        if (b.dataset.c === 'cam') $('#rPhotoCam').click(); else if (b.dataset.c === 'gal') $('#rPhotoGal').click();
+      };
+    });
     // Rebuild the ingredient rows only when the list itself changes (add/remove).
     // Typing in a gram box must NOT rebuild the rows — that replaces the focused box and closes the keyboard.
     const drawList = () => {
@@ -983,11 +1029,7 @@ const UI = (() => {
       const kgAt = (bmiV) => Math.round(bmiV * m2 * 10) / 10;
       const targetBmi = s.profile.targetBmi || 24.9;
       const targetKg = kgAt(targetBmi);
-      const diff = Math.round((kg - targetKg) * 10) / 10;
-      let msg;
-      if (diff > 0.05) msg = `Lose <b>${fmt(diff, 1)} kg</b> to reach target BMI of ${targetBmi} (${fmt(targetKg, 1)} kg).`;
-      else if (diff < -0.05) msg = `You're <b>${fmt(-diff, 1)} kg</b> under your target BMI of ${targetBmi} (${fmt(targetKg, 1)} kg).`;
-      else msg = `You're right on your target BMI of ${targetBmi} (${fmt(targetKg, 1)} kg).`;
+      const msg = bmiTargetMessage(kg, s.profile);
       const marks = [[18.5, 'edge'], [22, 'mid'], [25, 'edge'], [30, 'edge'], [40, 'end']];
       $('#bmiCard').innerHTML = `
         <div class="bmi-top">

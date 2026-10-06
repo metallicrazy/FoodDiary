@@ -1,6 +1,6 @@
 # FoodDiary
 
-**Current version: 1.16.4** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
+**Current version: 1.17.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
 
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
@@ -10,7 +10,7 @@ A clean, modern food diary & calorie tracker that runs as a web app on iPhone an
 - **UK generic foods** (2,854 items — fruit, veg, meat, cooked dishes) from the UK government's **CoFID / McCance & Widdowson** dataset, built in and searchable offline.
 - **Custom foods from a photo of the nutrition label** — on-device text recognition pre-fills the form, you check and save.
 - **Share recipes and custom foods** with friends over WhatsApp, Signal, email… — the link itself carries the whole recipe (no server). Receiver taps the link (Android) or pastes it into **Add → Import** (iPhone) and it's added to their own list, with a name check so nothing gets overwritten.
-- **Recipes** — build from a food search or pick items straight from your diary (any day in the last week) with the amounts you logged; favourites, recents, copy-yesterday.
+- **Recipes** — add a photo (camera or gallery); build from a food search or pick items straight from your diary (any day in the last week) with the amounts you logged; favourites, recents, copy-yesterday.
 - **Journey card** at the top of Today: progress bar from starting weight to target weight (BMI), % complete, and "at your real intake: on track for <date> — averaging x kcal above/below target". Tap it to open Progress.
 - **Daily targets** (calories, protein, carbs, fat) calculated from your profile (Mifflin–St Jeor) or set manually. Diet-style presets — **Low carb** (default), **Balanced**, **Keto** with a carb-limit slider (10–50 g). Change calories and the macros rescale to keep the same split; edit one macro and the other two adjust to fit. Every change shows **Saved ✓**.
 - **BMI & target weight**: colour-coded BMI scale with the matching weights for your height along the top, a settable target BMI (default 24.9) and how many kg to lose to reach it.
