@@ -432,8 +432,11 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 .journey .j-bmi b { color: var(--text); }
 
 /* Unsaved recipe row (Recipes tab) */
-.item.draft-row { border: 2px dashed var(--accent); box-shadow: none; margin-bottom: 8px; }
-.item.draft-row .thumb { background: var(--accent-soft); }
+.draft-row { display: flex; align-items: stretch; gap: 8px; margin-bottom: 8px; }
+.draft-row .draft-main { flex: 1; min-width: 0; border: 2px dashed var(--accent); box-shadow: none; }
+.draft-row .draft-main .thumb { background: var(--accent-soft); }
+.trash-btn { flex: none; width: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: var(--card); color: var(--danger); box-shadow: var(--shadow); }
+.trash-btn:active { transform: scale(.96); }
 #backBtn { flex: 0 0 auto; }
 
 /* Read-only recipe view */

@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.19.0';
+  const APP_VERSION = '1.19.1';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -462,10 +462,19 @@ const UI = (() => {
     const list = lists[addTab] || [];
     const empties = { recents: 'Foods you log will appear here for quick re-adding.', favourites: 'Tap ★ on any food to keep it here.', mine: 'Create a custom food from a photo of the nutrition label, or import one a friend shared.', recipes: 'Build a recipe once and log it as a single item — or import one a friend shared.' };
     const d = addTab === 'recipes' ? Store.state.recipeDraft : null;
-    const draftRow = d ? `<button class="item draft-row" id="resumeDraft"><div class="thumb">✏️</div><div class="item-main"><div class="item-title">Unsaved recipe${d.name ? ': ' + esc(d.name) : ''}</div><div class="item-sub">${d.ingredients.length} ingredient${d.ingredients.length === 1 ? '' : 's'} · tap to continue</div></div></button>` : '';
+    const TRASH = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
+    const draftRow = d ? `<div class="draft-row"><button class="item draft-main" id="resumeDraft"><div class="thumb">✏️</div><div class="item-main"><div class="item-title">Unsaved recipe${d.name ? ': ' + esc(d.name) : ''}</div><div class="item-sub">${d.ingredients.length} ingredient${d.ingredients.length === 1 ? '' : 's'} · tap to continue</div></div></button><button class="trash-btn" id="deleteDraft" aria-label="Delete unsaved recipe" title="Delete unsaved recipe">${TRASH}</button></div>` : '';
     $('#addContent').innerHTML = draftRow + (list.length || d ? `<div class="list">${list.map(foodRow).join('')}</div>` : `<div class="empty"><div class="empty-icon">${{ recents: '🕒', favourites: '★', mine: '🏷️', recipes: '🥘' }[addTab]}</div><p>${empties[addTab]}</p></div>`);
     bindFoodRows();
     if ($('#resumeDraft')) $('#resumeDraft').addEventListener('click', () => openRecipeSheet(Store.state.recipeDraft, { resume: true }));
+    if ($('#deleteDraft')) $('#deleteDraft').addEventListener('click', () => {
+      const dr = Store.state.recipeDraft; if (!dr) return;
+      openSheet(`<div class="sheet-title"><h2>Delete unsaved recipe?</h2></div>
+        <p>${dr.id ? `This deletes your unsaved changes to <b>${esc(dr.name || 'this recipe')}</b>. The saved version stays as it is.` : `This deletes <b>${esc(dr.name || 'your unsaved recipe')}</b> (${dr.ingredients.length} ingredient${dr.ingredients.length === 1 ? '' : 's'}). It can't be undone.`}</p>
+        <div class="day-guard"><button class="btn danger block" id="ddYes">Delete</button><button class="btn ghost block" id="ddNo">Cancel</button></div>`);
+      $('#ddYes').addEventListener('click', () => { Store.clearDraft(); closeSheet(); renderAdd(); toast('Unsaved recipe deleted'); });
+      $('#ddNo').addEventListener('click', () => closeSheet());
+    });
   }
   function renderIdle() {
     const s = Store.state;
@@ -748,13 +757,13 @@ const UI = (() => {
     if (!resume && d) {
       if (!recipeIsDirty(d)) Store.clearDraft();
       else {
-        const opening = recipe && recipe.id ? `Discard it and open “${esc(recipe.name)}”` : 'Discard it and start a new one';
+        const opening = recipe && recipe.id ? `Delete it and open “${esc(recipe.name)}”` : 'Delete it and start a new one';
         openSheet(`<div class="sheet-title"><h2>Unsaved recipe</h2><button class="icon-btn" id="closeDr">✕</button></div>
           <p>You were ${d.id ? 'editing' : 'building'} <b>${esc(d.name || 'a recipe')}</b> (${d.ingredients.length} ingredient${d.ingredients.length === 1 ? '' : 's'}) and it wasn't saved.</p>
-          <div class="day-guard"><button class="btn primary block" id="drContinue">Continue it</button><button class="btn block" id="drDiscard">${opening}</button></div>`);
+          <div class="day-guard"><button class="btn primary block" id="drContinue">Continue it</button><button class="btn block" id="drDelete">${opening}</button></div>`);
         $('#closeDr').addEventListener('click', () => closeSheet());
         $('#drContinue').addEventListener('click', () => openRecipeSheet(d, { resume: true }));
-        $('#drDiscard').addEventListener('click', () => { Store.clearDraft(); openRecipeSheet(recipe, { resume: true }); });
+        $('#drDelete').addEventListener('click', () => { Store.clearDraft(); openRecipeSheet(recipe, { resume: true }); });
         return;
       }
     }
