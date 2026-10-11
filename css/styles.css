@@ -258,7 +258,7 @@ textarea { height: auto; padding: 10px 12px; }
 .sheet-actions { display: flex; gap: 8px; margin-top: 8px; }
 .sheet-actions .btn { flex: 1; }
 .scan-area { border-radius: 16px; overflow: hidden; background: #000; min-height: 260px; position: relative; }
-.scan-area video { width: 100% !important; border-radius: 16px; }
+.scan-area video, .scan-video { width: 100%; display: block; border-radius: 16px; max-height: 60vh; object-fit: cover; background: #000; }
 .scan-hint { text-align: center; color: var(--muted); font-size: 13px; margin: 10px 0; }
 .manual-code { display: flex; gap: 8px; }
 .manual-code input { flex: 1; }
@@ -430,3 +430,8 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 .recipe-photo-btns .btn.photo-btn { padding: 8px 14px; font-size: 14px; }
 .recipe-photo-btns .text-btn { padding: 4px 2px; min-height: 0; font-size: 13px; }
 .journey .j-bmi b { color: var(--text); }
+
+/* Unsaved recipe row (Recipes tab) */
+.item.draft-row { border: 2px dashed var(--accent); box-shadow: none; margin-bottom: 8px; }
+.item.draft-row .thumb { background: var(--accent-soft); }
+#backBtn { flex: 0 0 auto; }

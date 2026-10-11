@@ -1,8 +1,8 @@
 /* FoodDiary service worker — offline app shell + cached libraries/images. Bump VERSION when you change the app. */
-const VERSION = 'fooddiary-v1.17.0';
+const VERSION = 'fooddiary-v1.18.0';
 const SHELL = [
   './', 'index.html', 'css/styles.css',
-  'js/nutrition.js', 'js/portions.js', 'js/names.js', 'js/ranking.js', 'js/share.js', 'js/store.js', 'js/sources.js', 'js/app.js',
+  'js/nutrition.js', 'js/portions.js', 'js/names.js', 'js/ranking.js', 'js/share.js', 'js/scanner.js', 'js/store.js', 'js/sources.js', 'js/app.js',
   'data/cofid.json', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];
 const RUNTIME = VERSION + '-runtime';
@@ -50,7 +50,7 @@ self.addEventListener('fetch', (e) => {
   }
 
   // CDN libraries (Chart.js, scanner, OCR + language data) and product images: cache first.
-  if (/cdn\.jsdelivr\.net|cdn\.sheetjs\.com|unpkg\.com|tessdata|openfoodfacts\.org/.test(url.hostname + url.pathname)) {
+  if (/jsdelivr\.net|cdn\.sheetjs\.com|unpkg\.com|tessdata|openfoodfacts\.org/.test(url.hostname + url.pathname)) {
     e.respondWith(caches.open(RUNTIME).then(async (c) => {
       const hit = await c.match(req);
       if (hit) return hit;

@@ -1,16 +1,16 @@
 # FoodDiary
 
-**Current version: 1.17.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
+**Current version: 1.18.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
 
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
-- **Barcode scanning** with the phone camera (or type the number) → product name, photo, calories and macros from **Open Food Facts** (3.5M+ products, strong UK coverage).
+- **Fast barcode scanning** with the phone camera (native decoder on Android, ZXing WebAssembly on iPhone) (or type the number) → product name, photo, calories and macros from **Open Food Facts** (3.5M+ products, strong UK coverage).
 - **Plain-English food names** — the official UK dataset says "Oranges, flesh only" and "Potatoes, old, boiled in unsalted water"; FoodDiary shows "Orange (peeled)" and "Boiled potato".
 - **Search that thinks like you do** — "egg" brings up chicken eggs, "milk" semi-skimmed, "rice" boiled white rice; composite dishes and exotic variants sit lower, and foods you've logged before float up.
 - **UK generic foods** (2,854 items — fruit, veg, meat, cooked dishes) from the UK government's **CoFID / McCance & Widdowson** dataset, built in and searchable offline.
 - **Custom foods from a photo of the nutrition label** — on-device text recognition pre-fills the form, you check and save.
 - **Share recipes and custom foods** with friends over WhatsApp, Signal, email… — the link itself carries the whole recipe (no server). Receiver taps the link (Android) or pastes it into **Add → Import** (iPhone) and it's added to their own list, with a name check so nothing gets overwritten.
-- **Recipes** — add a photo (camera or gallery); build from a food search or pick items straight from your diary (any day in the last week) with the amounts you logged; favourites, recents, copy-yesterday.
+- **Recipes** — auto-saved while you build them (an accidental close never loses your work); "Back to results" if you open the wrong ingredient; add a photo (camera or gallery); build from a food search or pick items straight from your diary (any day in the last week) with the amounts you logged; favourites, recents, copy-yesterday.
 - **Journey card** at the top of Today: progress bar from starting weight to target weight (BMI), % complete, and "at your real intake: on track for <date> — averaging x kcal above/below target". Tap it to open Progress.
 - **Daily targets** (calories, protein, carbs, fat) calculated from your profile (Mifflin–St Jeor) or set manually. Diet-style presets — **Low carb** (default), **Balanced**, **Keto** with a carb-limit slider (10–50 g). Change calories and the macros rescale to keep the same split; edit one macro and the other two adjust to fit. Every change shows **Saved ✓**.
 - **BMI & target weight**: colour-coded BMI scale with the matching weights for your height along the top, a settable target BMI (default 24.9) and how many kg to lose to reach it.
@@ -77,7 +77,7 @@ Unzip the release and **double-click `index.html`** — it opens in your browser
 
 - Product data: [Open Food Facts](https://world.openfoodfacts.org) — Open Database License (ODbL). Please consider contributing missing products via their app.
 - Generic UK foods: McCance & Widdowson's *Composition of Foods Integrated Dataset* (CoFID), Public Health England — © Crown copyright, [Open Government Licence v3](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
-- Libraries (loaded from CDN, cached for offline use): [Chart.js](https://www.chartjs.org/), [html5-qrcode](https://github.com/mebjas/html5-qrcode), [Tesseract.js](https://tesseract.projectnaptha.com/), [SheetJS](https://sheetjs.com/) (import only).
+- Libraries (loaded from CDN, cached for offline use): [Chart.js](https://www.chartjs.org/), [barcode-detector](https://github.com/Sec-ant/barcode-detector) (ZXing-C++ WebAssembly), [Tesseract.js](https://tesseract.projectnaptha.com/), [SheetJS](https://sheetjs.com/) (import only).
 - Targets use the Mifflin–St Jeor equation with standard activity multipliers. This is a personal tool, not medical advice.
 
 ## Continuing development

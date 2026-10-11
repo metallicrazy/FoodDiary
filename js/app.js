@@ -6,11 +6,10 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.17.0';
+  const APP_VERSION = '1.18.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
-    scanner: 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js',
     tesseract: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'
   };
 
@@ -54,7 +53,7 @@ const UI = (() => {
     $$('.tabbar .tab').forEach((t) => t.classList.toggle('active', t.dataset.goto === view));
     window.scrollTo({ top: 0 });
     if (view === 'today') renderToday();
-    if (view === 'add') renderAdd(); // keyboard only when the user taps the search box
+    if (view === 'add') { renderAdd(); if (typeof Scanner !== 'undefined' && navigator.onLine) setTimeout(Scanner.warmUp, 400); } // keyboard only when the user taps the search box
     if (view === 'progress') renderProgress();
     if (view === 'me') renderMe();
   }
@@ -257,7 +256,7 @@ const UI = (() => {
     return null;
   }
 
-  function openFoodSheet(food, { entry = null, onAdd = null } = {}) {
+  function openFoodSheet(food, { entry = null, onAdd = null, onBack = null, fromQuery = '' } = {}) {
     const isEdit = !!entry;
     const portion = portionFor(food);
     const isLiquid = /ml|litre|^l$/i.test(food.quantity || '') || /drink|juice|milk|beer|lager|cider|wine|cola|lemonade|smoothie|squash|coffee|tea,/i.test(food.name || '');
@@ -310,6 +309,7 @@ const UI = (() => {
         ${food.salt != null ? `<tr><td>Salt</td><td>${fmt(food.salt, 2)} g</td></tr>` : ''}
       </table>
       <div class="sheet-actions">
+        ${onBack ? '<button class="btn" id="backBtn">← Back to results</button>' : ''}
         ${isEdit ? '<button class="btn danger" id="deleteEntry">Delete</button>' : ''}
         ${food.source === 'custom' || food.source === 'recipe' ? '<button class="btn icon-only" id="shareBtn" aria-label="Share" title="Share">⇪</button>' : ''}
         ${food.source === 'custom' ? '<button class="btn" id="editCustom">Edit</button>' : ''}
@@ -352,6 +352,7 @@ const UI = (() => {
       mode = c.dataset.mode; $$('.mode-chips .chip').forEach((x) => x.classList.toggle('active', x === c));
       gIn.value = mode === 'unit' ? portion.g : 100; qIn.value = 1; update();
     }));
+    if (onBack) $('#backBtn').addEventListener('click', () => onBack());
     $('#favBtn').addEventListener('click', (e) => { const on = Store.toggleFavourite(food); e.currentTarget.classList.toggle('on', on); toast(on ? 'Added to favourites' : 'Removed from favourites'); });
     if (isEdit) $('#deleteEntry').addEventListener('click', () => { Store.removeEntry(currentDate, entry.id); closeSheet(); renderToday(); toast('Removed'); });
     if ($('#shareBtn')) $('#shareBtn').addEventListener('click', () => { if (food.source === 'recipe') { const r = Store.state.recipes.find((x) => x.id === food.id); if (r) shareItem('recipe', r); } else shareItem('food', food); });
@@ -368,7 +369,7 @@ const UI = (() => {
       const e = buildEntry();
       if (onAdd) { closeSheet(true); onAdd(e.food, e.grams); return; }
       if (isEdit) { Store.updateEntry(currentDate, entry.id, { grams: e.grams, qty: e.qty, sizeG: e.sizeG, unit: e.unit, unitPlural: e.unitPlural, liquid: e.liquid, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat }); closeSheet(); renderToday(); toast('Updated'); return; }
-      logWithDayGuard((dk) => { Store.addEntry(dk, e); toast(`Added ${fmt(e.kcal)} kcal to ${dateLabel(dk).toLowerCase()}`); currentDate = dk; goto('today'); });
+      logWithDayGuard((dk) => { Store.addEntry(dk, e); if (fromQuery) Store.rememberPick(fromQuery, food); toast(`Added ${fmt(e.kcal)} kcal to ${dateLabel(dk).toLowerCase()}`); currentDate = dk; goto('today'); });
     });
   }
 
@@ -448,8 +449,11 @@ const UI = (() => {
     const lists = { recents: s.recents, favourites: s.favourites, mine: s.customFoods, recipes: s.recipes.map(Sources.recipeAsFood) };
     const list = lists[addTab] || [];
     const empties = { recents: 'Foods you log will appear here for quick re-adding.', favourites: 'Tap ★ on any food to keep it here.', mine: 'Create a custom food from a photo of the nutrition label, or import one a friend shared.', recipes: 'Build a recipe once and log it as a single item — or import one a friend shared.' };
-    $('#addContent').innerHTML = list.length ? `<div class="list">${list.map(foodRow).join('')}</div>` : `<div class="empty"><div class="empty-icon">${{ recents: '🕒', favourites: '★', mine: '🏷️', recipes: '🥘' }[addTab]}</div><p>${empties[addTab]}</p></div>`;
+    const d = addTab === 'recipes' ? Store.state.recipeDraft : null;
+    const draftRow = d ? `<button class="item draft-row" id="resumeDraft"><div class="thumb">✏️</div><div class="item-main"><div class="item-title">Unsaved recipe${d.name ? ': ' + esc(d.name) : ''}</div><div class="item-sub">${d.ingredients.length} ingredient${d.ingredients.length === 1 ? '' : 's'} · tap to continue</div></div></button>` : '';
+    $('#addContent').innerHTML = draftRow + (list.length || d ? `<div class="list">${list.map(foodRow).join('')}</div>` : `<div class="empty"><div class="empty-icon">${{ recents: '🕒', favourites: '★', mine: '🏷️', recipes: '🥘' }[addTab]}</div><p>${empties[addTab]}</p></div>`);
     bindFoodRows();
+    if ($('#resumeDraft')) $('#resumeDraft').addEventListener('click', () => openRecipeSheet(Store.state.recipeDraft, { resume: true }));
   }
   function renderIdle() {
     const s = Store.state;
@@ -463,10 +467,14 @@ const UI = (() => {
   }
   function renderResults(q, { offPending = false, offError = null } = {}) {
     if (addTab !== 'results') return;
-    const local = Sources.searchLocal(q);
-    const cof = Sources.searchCofid(q, 20);
-    const off = offResults.get(q);
+    const pick = Store.pickFor(q);
+    const notPick = (f) => !pick || f.id !== pick.id;
+    const local = Sources.searchLocal(q).filter(notPick);
+    const cof = Sources.searchCofid(q, 20).filter(notPick);
+    const offAll = offResults.get(q);
+    const off = offAll ? offAll.filter(notPick) : offAll;
     let html = '';
+    if (pick) html += `<div class="group-title">Your pick last time</div><div class="list">${foodRow(pick)}</div>`;
     if (local.length) html += `<div class="group-title">My foods & recipes</div><div class="list">${local.map(foodRow).join('')}</div>`;
     if (cof.length) html += `<div class="group-title">UK foods</div><div class="list">${cof.map(foodRow).join('')}</div>`;
     html += `<div class="group-title">Products ${offPending ? '<span class="spinner"></span>' : ''}</div>`;
@@ -492,7 +500,7 @@ const UI = (() => {
   const foodIndex = new Map();
   function bindFoodRows(onPick) {
     foodIndex.clear();
-    const all = [...Store.state.recents, ...Store.state.favourites, ...Store.state.customFoods, ...Store.state.recipes.map(Sources.recipeAsFood), ...Object.values(Store.state.cache)];
+    const all = [...Object.values(Store.state.picks || {}), ...Store.state.recents, ...Store.state.favourites, ...Store.state.customFoods, ...Store.state.recipes.map(Sources.recipeAsFood), ...Object.values(Store.state.cache)];
     for (const list of offResults.values()) all.push(...list);
     all.forEach((f) => foodIndex.set(f.id, f));
     Sources.searchCofid(input.value.trim(), 50).forEach((f) => foodIndex.set(f.id, f));
@@ -500,7 +508,7 @@ const UI = (() => {
   $('#addContent').addEventListener('click', (e) => {
     const b = e.target.closest('[data-food]'); if (!b) return;
     const f = foodIndex.get(b.dataset.food);
-    if (f) openFoodSheet(f);
+    if (f) openFoodSheet(f, { fromQuery: addTab === 'results' ? input.value.trim() : '' });
   });
 
   /* ===================== SCANNER ===================== */
@@ -540,21 +548,20 @@ const UI = (() => {
       return false;
     };
     try {
-      if (typeof Html5Qrcode === 'undefined') await Sources.loadScript(CDN.scanner);
-      const formats = [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E, Html5QrcodeSupportedFormats.CODE_128];
-      scanner = new Html5Qrcode('reader', { formatsToSupport: formats, experimentalFeatures: { useBarCodeDetectorIfSupported: true }, verbose: false });
-      let done = false;
-      await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: (w, h) => ({ width: Math.min(300, Math.round(w * 0.85)), height: Math.round(Math.min(300, w * 0.85) * 0.5) }), aspectRatio: 1.333 },
-        (text) => { if (done) return; done = true; const code = text.replace(/\D/g, ''); if (!localHandle(code)) handle(code); },
-        () => {});
+      scanner = await Scanner.start($('#reader'), (code) => { if (navigator.vibrate) navigator.vibrate(30); if (!localHandle(code)) handle(code); }, {
+        onStatus: (st) => { const h = $('#scanHint'); if (!h) return; if (st === 'loading') h.innerHTML = '<span class="spinner"></span> Starting scanner…'; if (st === 'ready') h.textContent = 'Hold the barcode in the middle of the screen'; }
+      });
     } catch (err) {
       console.warn(err);
-      $('#scanHint').textContent = 'Camera unavailable – ' + (String(err).includes('Permission') || String(err).includes('NotAllowed') ? 'allow camera access in your browser settings, or type the barcode below.' : 'type the barcode below.');
+      const msg = String(err && (err.name || err.message || err));
+      const h = $('#scanHint');
+      if (h) h.textContent = 'Camera unavailable – ' + (/NotAllowed|Permission|Security/i.test(msg) ? 'allow camera access in your browser settings, or type the barcode below.' : /load|engine/i.test(msg) ? 'the scanner needs an internet connection the first time. Type the barcode below.' : 'type the barcode below.');
     }
   }
   async function stopScanner() {
-    if (scanner) { try { await scanner.stop(); scanner.clear(); } catch (e) { /* ignore */ } scanner = null; }
+    if (scanner) { try { scanner.stop(); } catch (e) { /* ignore */ } scanner = null; }
   }
+
 
   /* ===================== CUSTOM FOOD (with label OCR) ===================== */
   function openCustomFoodSheet(seed) {
@@ -687,8 +694,31 @@ const UI = (() => {
   }
 
   /* ===================== RECIPES ===================== */
-  function openRecipeSheet(recipe) {
+  // Does a recipe-in-progress differ from what's saved (or, for a new recipe, contain anything)?
+  function recipeIsDirty(r) {
+    const sig = (x) => JSON.stringify({ n: (x.name || '').trim(), s: x.servings, t: x.totalG || null, im: x.image || null, ing: (x.ingredients || []).map((i) => [i.food && i.food.id, i.grams]) });
+    if (r.id) { const saved = Store.state.recipes.find((x) => x.id === r.id); return !saved || sig(saved) !== sig(r); }
+    return !!((r.name || '').trim() || (r.ingredients || []).length || r.image);
+  }
+
+  // resume = returning to the editor mid-flow (from the ingredient search, diary picker or a draft) — no draft prompt.
+  function openRecipeSheet(recipe, { resume = false } = {}) {
+    const d = Store.state.recipeDraft;
+    if (!resume && d) {
+      if (!recipeIsDirty(d)) Store.clearDraft();
+      else {
+        const opening = recipe && recipe.id ? `Discard it and open “${esc(recipe.name)}”` : 'Discard it and start a new one';
+        openSheet(`<div class="sheet-title"><h2>Unsaved recipe</h2><button class="icon-btn" id="closeDr">✕</button></div>
+          <p>You were ${d.id ? 'editing' : 'building'} <b>${esc(d.name || 'a recipe')}</b> (${d.ingredients.length} ingredient${d.ingredients.length === 1 ? '' : 's'}) and it wasn't saved.</p>
+          <div class="day-guard"><button class="btn primary block" id="drContinue">Continue it</button><button class="btn block" id="drDiscard">${opening}</button></div>`);
+        $('#closeDr').addEventListener('click', () => closeSheet());
+        $('#drContinue').addEventListener('click', () => openRecipeSheet(d, { resume: true }));
+        $('#drDiscard').addEventListener('click', () => { Store.clearDraft(); openRecipeSheet(recipe, { resume: true }); });
+        return;
+      }
+    }
     const r = recipe ? JSON.parse(JSON.stringify(recipe)) : { name: '', servings: 4, ingredients: [], totalG: null, image: null };
+    delete r.draftSavedAt;
     const isEdit = !!(recipe && recipe.id);
     openSheet(`
       <div class="sheet-title"><h2>${isEdit ? 'Edit recipe' : 'New recipe'}</h2><button class="icon-btn" id="closeR">✕</button></div>
@@ -725,6 +755,7 @@ const UI = (() => {
       const rm = $('#rPhotoRemove');
       if (img && !rm) $('#rPhotoBtn').insertAdjacentHTML('afterend', '<button class="btn text-btn" id="rPhotoRemove" type="button">Remove photo</button>');
       if (!img && rm) rm.remove();
+      autosave();
     };
     const onRecipePhoto = async (e) => { const file = e.target.files[0]; if (!file) return; e.target.value = ''; setRecipePhoto(await fileToDataURL(file, 256, 0.8)); };
     $('#rPhotoCam').addEventListener('change', onRecipePhoto);
@@ -763,8 +794,15 @@ const UI = (() => {
     $('#rIngredients').addEventListener('click', (e) => { const d = e.target.closest('[data-del]'); if (d) { r.ingredients.splice(+d.dataset.del, 1); draw(); } });
     $('#rServings').addEventListener('input', drawTotals); $('#rTotal').addEventListener('input', drawTotals);
     const snapshot = () => Object.assign(r, { name: $('#rName').value, servings: parseInt($('#rServings').value, 10) || r.servings, totalG: parseFloat($('#rTotal').value) || null });
-    $('#rAddIng').addEventListener('click', () => { snapshot(); openIngredientPicker((food, grams) => { r.ingredients.push({ food, grams }); openRecipeSheet(r); }, r); });
-    $('#rFromDiary').addEventListener('click', () => { snapshot(); openDiaryPicker((items) => { items.forEach((x) => r.ingredients.push(x)); openRecipeSheet(r); toast(`Added ${items.length} item${items.length === 1 ? '' : 's'} from your diary`); }, r); });
+    // Auto-save the work in progress so an accidental close (tap outside, swipe back) never loses it.
+    const autosave = () => { snapshot(); if (recipeIsDirty(r)) Store.saveDraft(r); else if (Store.state.recipeDraft && (Store.state.recipeDraft.id || null) === (r.id || null)) Store.clearDraft(); };
+    $('#rName').addEventListener('input', autosave);
+    $('#rServings').addEventListener('input', autosave); $('#rTotal').addEventListener('input', autosave);
+    $('#rIngredients').addEventListener('input', autosave);
+    $('#rIngredients').addEventListener('click', (e) => { if (e.target.closest('[data-del]')) autosave(); });
+    autosave();
+    $('#rAddIng').addEventListener('click', () => { snapshot(); autosave(); openIngredientPicker((food, grams) => { r.ingredients.push({ food, grams }); openRecipeSheet(r, { resume: true }); }, r); });
+    $('#rFromDiary').addEventListener('click', () => { snapshot(); autosave(); openDiaryPicker((items) => { items.forEach((x) => r.ingredients.push(x)); openRecipeSheet(r, { resume: true }); toast(`Added ${items.length} item${items.length === 1 ? '' : 's'} from your diary`); }, r); });
     $('#rSave').addEventListener('click', () => {
       const name = $('#rName').value.trim(); if (!name) return toast('Name the recipe');
       if (!r.ingredients.length) return toast('Add at least one ingredient');
@@ -774,42 +812,68 @@ const UI = (() => {
       const tot = Nutrition.sum(r.ingredients.map((x) => Nutrition.scaleExact(x.food, x.grams)));
       const per100 = { kcal: Math.round((tot.kcal / totalG) * 100), protein: +((tot.protein / totalG) * 100).toFixed(1), carbs: +((tot.carbs / totalG) * 100).toFixed(1), fat: +((tot.fat / totalG) * 100).toFixed(1) };
       const saved = Store.saveRecipe({ id: r.id, name, servings, totalG, ingredients: r.ingredients, per100, servingG: Math.round(totalG / servings), servingLabel: '1 serving', image: r.image });
+      Store.clearDraft();
       closeSheet(); toast('Recipe saved'); addTab = 'recipes'; $$('#addTabs .chip').forEach((x) => x.classList.toggle('active', x.dataset.tab === 'recipes')); renderAdd();
       openFoodSheet(Sources.recipeAsFood(saved));
     });
-    if (isEdit) $('#rDelete').addEventListener('click', () => { Store.deleteRecipe(r.id); closeSheet(); renderAdd(); toast('Recipe deleted'); });
+    if (isEdit) $('#rDelete').addEventListener('click', () => { Store.deleteRecipe(r.id); Store.clearDraft(); closeSheet(); renderAdd(); toast('Recipe deleted'); });
   }
   // Mini search inside a sheet, used to pick recipe ingredients.
-  function openIngredientPicker(onPick, draftRecipe) {
+  const ipOffCache = new Map(); // product search results per query, so "Back to results" doesn't re-query
+  function openIngredientPicker(onPick, draftRecipe, { query = '' } = {}) {
     openSheet(`
       <div class="sheet-title"><h2>Add ingredient</h2><button class="icon-btn" id="closeIP">✕</button></div>
-      <div class="searchbar"><div class="search-input"><span class="search-icon">⌕</span><input type="search" id="ipInput" placeholder="Search foods or barcode" autocomplete="off"></div><button class="btn icon-only accent" id="ipScan">▦</button></div>
+      <div class="searchbar"><div class="search-input"><span class="search-icon">⌕</span><input type="search" id="ipInput" placeholder="Search foods or barcode" autocomplete="off" enterkeyhint="search"></div><button class="btn icon-only accent" id="ipScan">▦</button></div>
       <div id="ipResults" class="list"></div>`);
-    $('#closeIP').addEventListener('click', () => openRecipeSheet(draftRecipe));
+    $('#closeIP').addEventListener('click', () => openRecipeSheet(draftRecipe, { resume: true }));
     const ipIndex = new Map();
-    const show = (foods, pending) => {
-      $('#ipResults').innerHTML = (foods.map((f) => { ipIndex.set(f.id, f); return foodRow(f); }).join('')) + (pending ? '<div class="group-title"><span class="spinner"></span> Searching products…</div>' : '');
-    };
     const ipInput = $('#ipInput');
+    ipInput.value = query;
+    // Picking a food opens its page with "Back to results" (keeps the search) and remembers the pick for next time.
+    const pickFood = (f, q) => openFoodSheet(f, {
+      onAdd: (food, grams) => { if (q) Store.rememberPick(q, food); onPick(food, grams); },
+      onBack: () => openIngredientPicker(onPick, draftRecipe, { query: q })
+    });
+    const show = (foods, pending, q) => {
+      // Results can arrive after the user has moved on (opened a food, gone back to the recipe) — ignore them then.
+      const box = $('#ipResults'); if (!box || $('#ipInput') !== ipInput) return;
+      const pick = q ? Store.pickFor(q) : null;
+      const usePick = pick && pick.source !== 'recipe' ? pick : null;
+      const rest = foods.filter((f) => !usePick || f.id !== usePick.id);
+      if (usePick) ipIndex.set(usePick.id, usePick);
+      box.innerHTML = (usePick ? `<div class="group-title">Your pick last time</div>${foodRow(usePick)}${rest.length ? '<div class="group-title">Other results</div>' : ''}` : '') +
+        rest.map((f) => { ipIndex.set(f.id, f); return foodRow(f); }).join('') +
+        (pending ? '<div class="group-title"><span class="spinner"></span> Searching products…</div>' : '');
+    };
     let t;
     const doSearch = async () => {
       const q = ipInput.value.trim();
-      if (!q) { show([...Store.state.recents.slice(0, 10), ...Store.state.customFoods.slice(0, 10)], false); return; }
+      if (!q) { show([...Store.state.recents.slice(0, 10), ...Store.state.customFoods.slice(0, 10)], false, ''); return; }
       const local = [...Sources.searchLocal(q).filter((f) => f.source !== 'recipe'), ...Sources.searchCofid(q, 15)];
-      show(local, q.length >= 3);
+      const cached = ipOffCache.get(q);
+      if (cached) { show([...local, ...cached], false, q); return; }
+      show(local, q.length >= 3, q);
       if (q.length < 3) return;
-      try { const off = await Sources.search(q).off; if (ipInput.value.trim() === q) show([...local, ...off], false); } catch (e) { show(local, false); }
+      try {
+        const off = await Sources.search(q).off;
+        ipOffCache.set(q, off);
+        if (ipInput.value.trim() === q) show([...local, ...off], false, q);
+      } catch (e) { if (ipInput.value.trim() === q) show(local, false, q); }
     };
     ipInput.addEventListener('input', () => { clearTimeout(t); t = setTimeout(doSearch, 700); });
-    ipInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(t); doSearch(); } });
-    $('#ipScan').addEventListener('click', () => openScanner(async (code) => {
-      const mine = Store.state.customFoods.find((f) => f.barcode === code);
-      const f = mine || await Sources.lookupBarcode(code).catch(() => null);
-      if (f) openFoodSheet(f, { onAdd: onPick }); else { toast('Barcode not found'); openIngredientPicker(onPick, draftRecipe); }
-    }));
-    $('#ipResults').addEventListener('click', (e) => { const b = e.target.closest('[data-food]'); if (!b) return; const f = ipIndex.get(b.dataset.food); if (f) openFoodSheet(f, { onAdd: onPick }); });
+    ipInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(t); doSearch(); ipInput.blur(); } });
+    $('#ipScan').addEventListener('click', () => {
+      const q = ipInput.value.trim();
+      openScanner(async (code) => {
+        const mine = Store.state.customFoods.find((f) => f.barcode === code);
+        const f = mine || await Sources.lookupBarcode(code).catch(() => null);
+        if (f) openFoodSheet(f, { onAdd: onPick, onBack: () => openIngredientPicker(onPick, draftRecipe, { query: q }) });
+        else { toast('Barcode not found'); openIngredientPicker(onPick, draftRecipe, { query: q }); }
+      });
+    });
+    $('#ipResults').addEventListener('click', (e) => { const b = e.target.closest('[data-food]'); if (!b) return; const f = ipIndex.get(b.dataset.food); if (f) pickFood(f, ipInput.value.trim()); });
     doSearch();
-    setTimeout(() => ipInput.focus(), 50);
+    if (!query) setTimeout(() => { const el = $('#ipInput'); if (el) el.focus(); }, 50); // returning with a search: don't pop the keyboard
   }
 
   // Pick already-logged foods from the last 7 days to reuse in a recipe.
@@ -825,7 +889,7 @@ const UI = (() => {
       <div class="section-head" style="margin:4px 2px 6px"><span class="muted small" id="dpCount"></span><button class="link-btn" id="dpAll">Select all</button></div>
       <div class="list" id="dpList"></div>
       <div class="sheet-actions"><button class="btn" id="dpCancel">Cancel</button><button class="btn primary" id="dpAdd" disabled>Add to recipe</button></div>`);
-    const back = () => openRecipeSheet(draftRecipe);
+    const back = () => openRecipeSheet(draftRecipe, { resume: true });
     $('#closeDP').addEventListener('click', back); $('#dpCancel').addEventListener('click', back);
     const drawList = () => {
       const list = Store.entries(day);
@@ -1066,7 +1130,8 @@ const UI = (() => {
     const baseKg = Nutrition.smoothedWeight(s.weights, todayKey);
     let plan = [], actual = [], intake = null, keyHtml = '';
     const targetKgLine = s.profile.heightCm ? Math.round((s.profile.targetBmi || 24.9) * (s.profile.heightCm / 100) ** 2 * 10) / 10 : null;
-    if (showF && hasProfile && baseKg) {
+    // The Forecast switch only shows/hides the projected lines on the chart; the summary table below always shows (1.18.0).
+    if (hasProfile && baseKg) {
       plan = Nutrition.projectWeight(baseKg, s.profile, s.targets.kcal, todayKey, 30);
       intake = Nutrition.averageIntake(s.diary, todayKey, 14);
       if (intake) actual = Nutrition.projectWeight(baseKg, s.profile, intake.kcal, todayKey, 30);
@@ -1090,20 +1155,21 @@ const UI = (() => {
                    : row('dotted', 'Avg intake', '<span class="muted">—</span>', targetCell, '<span class="muted">Log food on 3 days</span>')}
         </tbody></table>
         <p class="ftable-note">Plan intake = eating your calorie target every day.<br>Avg intake = your recent average of what you've logged.</p>`;
-    } else if (showF && !hasProfile) keyHtml = '<p class="ftable-note">Add your age and height in <b>Me</b> to see a forecast.</p>';
-    else if (showF && !baseKg) keyHtml = '<p class="ftable-note">Log a weight to see a forecast.</p>';
+    } else if (!hasProfile) keyHtml = '<p class="ftable-note">Add your age and height in <b>Me</b> to see a forecast.</p>';
+    else if (!baseKg) keyHtml = '<p class="ftable-note">Log a weight to see a forecast.</p>';
     $('#forecastKey').innerHTML = keyHtml;
 
     // Shared date axis: past readings, then forecast dates
     const dates = pts.map((p) => p.date);
-    const fDates = plan.map((p) => p.date).filter((dk) => !dates.includes(dk));
+    const chartPlan = showF ? plan : [], chartActual = showF ? actual : [];
+    const fDates = chartPlan.map((p) => p.date).filter((dk) => !dates.includes(dk));
     const axis = [...dates, ...fDates];
     const series = (arr) => axis.map((dk) => { const hit = arr.find((p) => p.date === dk); return hit ? hit.kg : null; });
     const todayIdx = axis.indexOf(todayKey);
     const datasets = [{ label: 'Recorded', data: series(pts), borderColor: col('--accent'), backgroundColor: col('--accent-soft'), fill: true, tension: 0.35, pointRadius: pts.length > 30 ? 0 : 3, pointBackgroundColor: col('--accent'), borderWidth: 2, spanGaps: true, order: 1 }];
-    if (plan.length) datasets.push({ label: 'Plan intake', data: series(plan), borderColor: col('--protein'), borderDash: [7, 4], borderWidth: 2, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true, order: 2 });
-    if (actual.length) datasets.push({ label: 'Avg intake', data: series(actual), borderColor: col('--carbs'), borderDash: [2, 4], borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true, order: 3 });
-    if (targetKgLine && plan.length) datasets.push({ label: 'Target weight', data: axis.map(() => targetKgLine), borderColor: col('--muted'), borderDash: [1, 3], borderWidth: 1, pointRadius: 0, fill: false, order: 4 });
+    if (chartPlan.length) datasets.push({ label: 'Plan intake', data: series(chartPlan), borderColor: col('--protein'), borderDash: [7, 4], borderWidth: 2, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true, order: 2 });
+    if (chartActual.length) datasets.push({ label: 'Avg intake', data: series(chartActual), borderColor: col('--carbs'), borderDash: [2, 4], borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true, order: 3 });
+    if (targetKgLine && chartPlan.length) datasets.push({ label: 'Target weight', data: axis.map(() => targetKgLine), borderColor: col('--muted'), borderDash: [1, 3], borderWidth: 1, pointRadius: 0, fill: false, order: 4 });
     draw('weightChart', {
       type: 'line',
       data: { labels: axis.map(fmtD), datasets },
@@ -1112,7 +1178,7 @@ const UI = (() => {
           todayLine: { index: todayIdx, color: col('--muted') } },
         scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 6, maxRotation: 0 } }, y: { ticks: { maxTicksLimit: 5, callback: (v) => v + ' kg' }, grace: '10%' } } },
       plugins: [{ id: 'todayLine', afterDraw(chart, args, opts) {
-        if (opts.index === undefined || opts.index < 0 || !plan.length) return;
+        if (opts.index === undefined || opts.index < 0 || !chartPlan.length) return;
         const x = chart.scales.x.getPixelForValue(opts.index), { top, bottom } = chart.chartArea, ctx = chart.ctx;
         ctx.save(); ctx.strokeStyle = opts.color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
         ctx.fillStyle = opts.color; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('today', x, top + 10); ctx.restore();

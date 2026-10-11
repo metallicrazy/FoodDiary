@@ -16,6 +16,8 @@ const Store = (() => {
     cache: {},          // barcode -> food (OFF lookups)
     cofidLoadedAt: null,
     showForecast: true,
+    recipeDraft: null,  // unsaved recipe being built/edited (auto-saved, 1.18.0)
+    picks: {},          // normalised search text -> food the user added for it last time (1.18.0)
     onboarded: false
   });
 
@@ -171,6 +173,28 @@ const Store = (() => {
   }
   function reset() { state = defaults(); save(); }
 
+  /* ---- Recipe draft (auto-save) ---- */
+  function saveDraft(r) { state.recipeDraft = Object.assign(JSON.parse(JSON.stringify(r)), { draftSavedAt: new Date().toISOString() }); save(); }
+  function clearDraft() { if (state.recipeDraft) { state.recipeDraft = null; save(); } }
+
+  /* ---- Remembered picks: search text -> chosen food ---- */
+  // "Eggs", " egg " and "EGG" share one memory; a trailing plural s is ignored.
+  function pickKey(q) {
+    let k = String(q || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (k.length > 3 && k.endsWith('s') && !k.endsWith('ss')) k = k.slice(0, -1);
+    return k;
+  }
+  function rememberPick(q, food) {
+    const k = pickKey(q); if (!k || !food || !food.id) return;
+    if (!state.picks) state.picks = {};
+    delete state.picks[k];
+    state.picks[k] = slimFood(food);
+    const keys = Object.keys(state.picks);
+    if (keys.length > 300) keys.slice(0, keys.length - 300).forEach((x) => delete state.picks[x]); // oldest first
+    save();
+  }
+  function pickFor(q) { const k = pickKey(q); return (state.picks && k && state.picks[k]) || null; }
+
   function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 
   return {
@@ -178,6 +202,6 @@ const Store = (() => {
     entries, addEntry, updateEntry, removeEntry,
     pushRecent, toggleFavourite, isFavourite, slimFood,
     saveCustomFood, deleteCustomFood, saveRecipe, deleteRecipe,
-    logWeight, setStartWeight, latestWeight, exportJSON, importJSON, reset, uid
+    logWeight, setStartWeight, latestWeight, exportJSON, saveDraft, clearDraft, pickKey, rememberPick, pickFor, importJSON, reset, uid
   };
 })();
