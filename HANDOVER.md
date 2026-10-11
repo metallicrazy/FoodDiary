@@ -89,6 +89,10 @@ Food objects are per-100 g/ml: `{ id, source ('off'|'cofid'|'custom'|'recipe'), 
 - **Back to results**: a food page opened from the ingredient search has "← Back to results" (`openFoodSheet({ onBack })`), which reopens the picker with the same query (`openIngredientPicker(..., { query })`), cached product results (`ipOffCache`) and no keyboard pop.
 - **Remembered picks** (`Store.state.picks`, `Store.rememberPick/pickFor`, key = lowercase trimmed query with a trailing plural s dropped, max 300): when a food is added from a search — main Add search (via `fromQuery`) or the ingredient search — it's remembered for that search text and shown first under "Your pick last time" in both places (owner chose "everywhere"). Recipes are never pinned in the ingredient search.
 
+**Recipe view (1.19.0)**: the recipe's food page shows **View recipe** (not "Edit recipe"). `openRecipeView(r, onBack)` is read-only: photo, servings and weights, per-serving kcal/macros, every ingredient with grams and kcal, whole-recipe totals, then **← Back** (returns to the food page with the same options) and **Edit recipe** (opens the editor, so the draft prompt still applies). Purpose: let users recreate a meal from the ingredient list without risk of changing it. The button only shows if the recipe still exists (a diary entry can outlive a deleted recipe).
+
+**Panel history (1.19.0 fix)**: panels push a history entry so the phone's back gesture closes them. `closeSheet()` (non-silent) calls `history.back()`, whose `popstate` arrives asynchronously; if a new panel was opened in between (Save recipe → saved recipe panel; Import → imported item panel) that late popstate used to close it. `selfBacks` counts app-initiated backs; their popstate is ignored and a fresh history entry is pushed if a panel is open. Tests model real browsers by making `history.back()` async.
+
 **Forecast switch (1.18.0)**: the "Forecast" toggle on the Weight card only shows/hides the projected lines (and target line / today marker) on the chart. The Forecast summary table is always shown.
 
 **Sharing (1.13.0)**: ⇪ button on the food sheet for recipes and custom foods → `navigator.share` with a summary + link + iPhone instructions (fallback: copy box). `checkIncomingShare()` reads `#share=` on launch/hashchange and opens the import sheet; **Add → ⇩ Import** lets the user paste a link/code. Import sheet shows a preview, a **Save as** name field pre-filled with the shared name — red border + hint while the name is empty or already used, button disabled — and, when not running as an installed app on iOS, a "Copy code" button plus a note explaining to import inside the home-screen app (iOS opens links in Safari, whose storage is separate). No duplicates/overwrites are ever created.
@@ -158,6 +162,7 @@ Deliberately excluded: streaks/gamification, micronutrient tracking.
 
 ## 12. Changelog (one line per release; newest first)
 
+- **1.19.0** — Fix: the saved-recipe (and imported item) panel no longer closes itself a moment after opening; new read-only **View recipe** with Edit inside.
 - **1.18.0** — New barcode scanner (`js/scanner.js`, fast on iPhone); recipe drafts auto-saved with Continue prompt; "Back to results" from a wrongly opened ingredient; last-picked item for a search shown first (Add search and recipe search); Forecast switch no longer hides the summary table.
 - **1.17.0** — Recipe photos (camera or gallery); Today journey card shows "Lose x kg to reach target BMI…" instead of the Current → Target BMI line.
 - **1.16.4** — Fix: recipe editor no longer closes the keyboard after one character (typing redrew the ingredient rows; now only totals refresh).

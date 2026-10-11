@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.18.0';
+  const APP_VERSION = '1.19.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -43,9 +43,21 @@ const UI = (() => {
     document.body.style.overflow = '';
     const cb = onSheetClose; onSheetClose = null;
     if (cb) cb();
-    if (!silent && history.state && history.state.sheet) history.back();
+    if (!silent && history.state && history.state.sheet) { selfBacks++; history.back(); }
   }
-  window.addEventListener('popstate', () => { if (!$('#sheet').classList.contains('hidden')) closeSheet(true); });
+  // Panels are tied to browser history so the phone's back gesture closes them. When the app itself calls
+  // history.back() (closing a panel), the browser fires popstate a moment later. If the app has opened a new
+  // panel in the meantime (e.g. Save recipe → show the saved recipe), that late popstate must NOT close it (1.19.0).
+  let selfBacks = 0;
+  window.addEventListener('popstate', () => {
+    const open = !$('#sheet').classList.contains('hidden');
+    if (selfBacks > 0) {
+      selfBacks--;
+      if (open) history.pushState({ sheet: true }, ''); // keep the new panel closable with the back gesture
+      return;
+    }
+    if (open) closeSheet(true); // a genuine back gesture / back button
+  });
 
   /* ===================== Navigation ===================== */
   function goto(view) {
@@ -313,7 +325,7 @@ const UI = (() => {
         ${isEdit ? '<button class="btn danger" id="deleteEntry">Delete</button>' : ''}
         ${food.source === 'custom' || food.source === 'recipe' ? '<button class="btn icon-only" id="shareBtn" aria-label="Share" title="Share">⇪</button>' : ''}
         ${food.source === 'custom' ? '<button class="btn" id="editCustom">Edit</button>' : ''}
-        ${food.source === 'recipe' ? '<button class="btn" id="editRecipe">Edit recipe</button>' : ''}
+        ${food.source === 'recipe' && Store.state.recipes.some((x) => x.id === food.id) ? '<button class="btn" id="viewRecipe">View recipe</button>' : ''}
         <button class="btn primary" id="addBtn">${isEdit ? 'Save' : onAdd ? 'Add ingredient' : 'Add to diary'}</button>
       </div>`);
 
@@ -357,7 +369,7 @@ const UI = (() => {
     if (isEdit) $('#deleteEntry').addEventListener('click', () => { Store.removeEntry(currentDate, entry.id); closeSheet(); renderToday(); toast('Removed'); });
     if ($('#shareBtn')) $('#shareBtn').addEventListener('click', () => { if (food.source === 'recipe') { const r = Store.state.recipes.find((x) => x.id === food.id); if (r) shareItem('recipe', r); } else shareItem('food', food); });
     if ($('#editCustom')) $('#editCustom').addEventListener('click', () => openCustomFoodSheet(food));
-    if ($('#editRecipe')) $('#editRecipe').addEventListener('click', () => { const r = Store.state.recipes.find((x) => x.id === food.id); if (r) openRecipeSheet(r); });
+    if ($('#viewRecipe')) $('#viewRecipe').addEventListener('click', () => { const r = Store.state.recipes.find((x) => x.id === food.id); if (r) openRecipeView(r, () => openFoodSheet(food, { entry, onAdd, onBack, fromQuery })); });
 
     const buildEntry = () => {
       const total = qty * sizeG;
@@ -694,6 +706,35 @@ const UI = (() => {
   }
 
   /* ===================== RECIPES ===================== */
+  // Read-only recipe: see exactly what went into it (to recreate it) without any risk of changing it (1.19.0).
+  // "Edit recipe" from here opens the editor; "Back" returns to wherever the user came from.
+  function openRecipeView(r, onBack) {
+    const totalG = r.totalG || r.ingredients.reduce((a, x) => a + (x.grams || 0), 0);
+    const tot = Nutrition.sum(r.ingredients.map((x) => Nutrition.scaleExact(x.food, x.grams)));
+    const servings = Math.max(1, r.servings || 1);
+    const per = { kcal: tot.kcal / servings, protein: tot.protein / servings, carbs: tot.carbs / servings, fat: tot.fat / servings };
+    openSheet(`
+      <div class="sheet-title"><h2>Recipe</h2><button class="icon-btn" id="closeRV">✕</button></div>
+      <div class="food-hero">
+        <div class="thumb">${r.image ? `<img src="${esc(r.image)}" alt="">` : '🥘'}</div>
+        <div class="meta"><h2>${esc(r.name)}</h2><p>${servings} serving${servings === 1 ? '' : 's'} · ${fmt(totalG)} g total · ${fmt(totalG / servings)} g per serving</p></div>
+      </div>
+      <div class="group-title">Per serving</div>
+      <div class="totals"><div><b>${fmt(per.kcal)}</b><small>kcal</small></div><div><b>${fmt(per.protein, 1)}</b><small>protein g</small></div><div><b>${fmt(per.carbs, 1)}</b><small>carbs g</small></div><div><b>${fmt(per.fat, 1)}</b><small>fat g</small></div></div>
+      <div class="group-title">Ingredients (${r.ingredients.length})</div>
+      <div class="rv-list">
+        ${r.ingredients.map((x) => { const k = Nutrition.scale(x.food, x.grams).kcal; return `<div class="rv-row">${thumbHTML(x.food)}<div class="item-main"><div class="item-title">${esc(x.food.name)}</div><div class="item-sub">${x.food.brand ? esc(x.food.brand) + ' · ' : ''}${fmt(x.grams)} g</div></div><div class="item-kcal"><b>${fmt(k)}</b><small>kcal</small></div></div>`; }).join('')}
+      </div>
+      <p class="muted small">Whole recipe: ${fmt(tot.kcal)} kcal · P ${fmt(tot.protein)} g · C ${fmt(tot.carbs)} g · F ${fmt(tot.fat)} g</p>
+      <div class="sheet-actions">
+        <button class="btn" id="rvBack">← Back</button>
+        <button class="btn primary" id="rvEdit">Edit recipe</button>
+      </div>`);
+    $('#closeRV').addEventListener('click', () => closeSheet());
+    $('#rvBack').addEventListener('click', () => (onBack ? onBack() : closeSheet()));
+    $('#rvEdit').addEventListener('click', () => { const cur = Store.state.recipes.find((x) => x.id === r.id) || r; openRecipeSheet(cur); });
+  }
+
   // Does a recipe-in-progress differ from what's saved (or, for a new recipe, contain anything)?
   function recipeIsDirty(r) {
     const sig = (x) => JSON.stringify({ n: (x.name || '').trim(), s: x.servings, t: x.totalG || null, im: x.image || null, ing: (x.ingredients || []).map((i) => [i.food && i.food.id, i.grams]) });

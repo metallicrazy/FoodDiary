@@ -435,3 +435,8 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 .item.draft-row { border: 2px dashed var(--accent); box-shadow: none; margin-bottom: 8px; }
 .item.draft-row .thumb { background: var(--accent-soft); }
 #backBtn { flex: 0 0 auto; }
+
+/* Read-only recipe view */
+.rv-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.rv-row { display: flex; align-items: center; gap: 12px; background: var(--card-2); border-radius: 14px; padding: 8px 12px; }
+.rv-row .thumb { width: 40px; height: 40px; border-radius: 10px; font-size: 18px; background: var(--card); }
