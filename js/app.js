@@ -4,9 +4,13 @@ const UI = (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
+  // Number and date formatters are built once and reused (1.21.0): creating one per number was ~10× slower.
+  const NF = [0, 1, 2, 3].map((dp) => new Intl.NumberFormat('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 }));
+  const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : (NF[dp] || new Intl.NumberFormat('en-GB', { maximumFractionDigits: dp })).format(Number(n));
+  const DF = {};
+  const fmtDateOpts = (date, opts) => { const k = JSON.stringify(opts); return (DF[k] || (DF[k] = new Intl.DateTimeFormat('en-GB', opts))).format(date); };
 
-  const APP_VERSION = '1.20.0';
+  const APP_VERSION = '1.21.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -81,11 +85,11 @@ const UI = (() => {
     if (key === Nutrition.addDays(today, -1)) return 'Yesterday';
     if (key === Nutrition.addDays(today, 1)) return 'Tomorrow';
     const [y, m, d] = key.split('-').map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    return fmtDateOpts(new Date(y, m - 1, d), { weekday: 'short', day: 'numeric', month: 'short' });
   }
   function fullDate(key) {
     const [y, m, d] = key.split('-').map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return fmtDateOpts(new Date(y, m - 1, d), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   }
 
   // One sentence about distance to the target BMI. Shared by the Progress BMI card and the Today journey card.
@@ -118,7 +122,7 @@ const UI = (() => {
     const pct = Math.round(frac * 100);
     const moved = Math.round(Math.abs(now - startKg) * 10) / 10;
     const wrongWay = losing ? now > startKg : now < startKg;
-    const fmtD = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
+    const fmtD = (k) => { const [y, m, d] = k.split('-').map(Number); return fmtDateOpts(new Date(y, m - 1, d), { day: 'numeric', month: 'short' }); };
 
     // Pace line from real intake
     const todayKey = Nutrition.dateKey(new Date());
@@ -449,6 +453,7 @@ const UI = (() => {
       const off = await res.off;
       if (seq !== searchSeq) return;
       offResults.set(q, off);
+      if (offResults.size > 20) offResults.delete(offResults.keys().next().value); // keep the last 20 searches
       renderResults(q, {});
     } catch (err) {
       if (seq !== searchSeq) return;
@@ -651,13 +656,9 @@ const UI = (() => {
       try {
         const preview = await fileToDataURL(file, 1600, 0.9, true);
         box.innerHTML = `<img class="ocr-preview" src="${preview}" alt="Label"><div class="progressline"><div id="ocrBar"></div></div><p class="muted small" id="ocrStatus">Loading text recognition…</p>`;
-        if (typeof Tesseract === 'undefined') await Sources.loadScript(CDN.tesseract);
-        const worker = await Tesseract.createWorker('eng', 1, {
-          logger: (m) => { if (m.status === 'recognizing text') { $('#ocrBar').style.width = Math.round(m.progress * 100) + '%'; $('#ocrStatus').textContent = 'Reading label… ' + Math.round(m.progress * 100) + '%'; } else if ($('#ocrStatus')) $('#ocrStatus').textContent = m.status.replace(/_/g, ' ') + '…'; }
-        });
-        await worker.setParameters({ preserve_interword_spaces: '1' });
+        const worker = await ocrWorker();
         const { data } = await worker.recognize(preview);
-        await worker.terminate();
+        ocrIdle();
         const r = Nutrition.parseLabelText(data.text);
         const set = (id, val) => { if (val !== null && val !== undefined) $(id).value = val; };
         set('#cfKcal', r.kcal); set('#cfFat', r.fat); set('#cfCarbs', r.carbs); set('#cfProtein', r.protein);
@@ -667,6 +668,7 @@ const UI = (() => {
         else box.innerHTML = `<div class="inline-note">Couldn't read a nutrition table. Try a straight-on, well-lit photo with the table filling the frame.</div><details class="small muted"><summary>Text found</summary><pre style="white-space:pre-wrap">${esc(data.text)}</pre></details>`;
       } catch (err) {
         console.error(err);
+        { const p = ocrWorkerP; ocrWorkerP = null; if (p) p.then((w) => w.terminate()).catch(() => {}); } // start fresh next time
         box.innerHTML = `<div class="inline-note">Text recognition failed (${esc(err.message || err)}). You can still type the values.</div>`;
       }
     }
@@ -908,6 +910,7 @@ const UI = (() => {
       try {
         const off = await Sources.search(q).off;
         ipOffCache.set(q, off);
+        if (ipOffCache.size > 20) ipOffCache.delete(ipOffCache.keys().next().value);
         if (ipInput.value.trim() === q) show([...local, ...off], false, q);
       } catch (e) { if (ipInput.value.trim() === q) show(local, false, q); }
     };
@@ -1069,6 +1072,34 @@ const UI = (() => {
   window.addEventListener('hashchange', checkIncomingShare);
   $('#importBtn').addEventListener('click', () => openImportSheet(''));
 
+  /* ===================== LABEL READING (shared worker) ===================== */
+  // 1.21.0: one text-recognition worker is kept for a few minutes after use, so a second label photo
+  // doesn't pay the 1–3 s start-up again. It is closed after 3 idle minutes to give the memory back.
+  let ocrWorkerP = null, ocrTimer = null;
+  function ocrWorker() {
+    clearTimeout(ocrTimer);
+    if (!ocrWorkerP) {
+      ocrWorkerP = (async () => {
+        if (typeof Tesseract === 'undefined') await Sources.loadScript(CDN.tesseract);
+        const w = await Tesseract.createWorker('eng', 1, {
+          logger: (m) => {
+            const bar = $('#ocrBar'), st = $('#ocrStatus');
+            if (m.status === 'recognizing text') { if (bar) bar.style.width = Math.round(m.progress * 100) + '%'; if (st) st.textContent = 'Reading label… ' + Math.round(m.progress * 100) + '%'; }
+            else if (st) st.textContent = m.status.replace(/_/g, ' ') + '…';
+          }
+        });
+        await w.setParameters({ preserve_interword_spaces: '1' });
+        return w;
+      })();
+      ocrWorkerP.catch(() => { ocrWorkerP = null; });
+    }
+    return ocrWorkerP;
+  }
+  function ocrIdle() {
+    clearTimeout(ocrTimer);
+    ocrTimer = setTimeout(() => { const p = ocrWorkerP; ocrWorkerP = null; if (p) p.then((w) => w.terminate()).catch(() => {}); }, 180000);
+  }
+
   /* ===================== PROGRESS ===================== */
   function weekKeys(offset) {
     const today = new Date(); const dow = (today.getDay() + 6) % 7; // Monday = 0
@@ -1086,7 +1117,7 @@ const UI = (() => {
     const keys = weekKeys(weekOffset);
     const T = Store.state.targets;
     const days = keys.map((k) => Nutrition.sum(Store.entries(k)));
-    const labels = keys.map((k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short' }); });
+    const labels = keys.map((k) => { const [y, m, d] = k.split('-').map(Number); return fmtDateOpts(new Date(y, m - 1, d), { weekday: 'short' }); });
     const first = keys[0].split('-'), last = keys[6].split('-');
     $('#weekLabel').textContent = weekOffset === 0 ? 'This week' : weekOffset === -1 ? 'Last week' : `${+first[2]}/${+first[1]} – ${+last[2]}/${+last[1]}`;
     $('#nextWeek').disabled = weekOffset >= 0;
@@ -1113,7 +1144,7 @@ const UI = (() => {
         { label: 'Fat', data: days.map((d) => Math.round(d.fat)), backgroundColor: col('--fat'), borderRadius: 4, maxBarThickness: 34 }
       ] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt(c.raw)} g (target ${fmt(T[c.dataset.label.toLowerCase()])} g)` } } }, scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true, ticks: { maxTicksLimit: 5, callback: (v) => v + ' g' } } } }
-    });
+    }, [T.protein, T.carbs, T.fat]);
     renderWeight(col);
   }
   function renderWeight(col) {
@@ -1129,7 +1160,7 @@ const UI = (() => {
     $('#weightTodayNote').textContent = todayW ? `Today's reading: ${fmt(todayW.kg, 1)} kg — logging again replaces it.` : 'One reading per day — weigh in at the same time each day, ideally first thing.';
     $('#logWeightBtn').textContent = todayW ? 'Update today' : 'Log today';
     updateWeightButton();
-    const fmtD = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
+    const fmtD = (k) => { const [y, m, d] = k.split('-').map(Number); return fmtDateOpts(new Date(y, m - 1, d), { day: 'numeric', month: 'short' }); };
     const startKg = s.profile.startWeightKg || (s.weights[0] && s.weights[0].kg) || null;
     const change = startKg && latest ? Math.round((latest.kg - startKg) * 10) / 10 : null;
     const b = Nutrition.bmi(latest && latest.kg, s.profile.heightCm);
@@ -1226,19 +1257,31 @@ const UI = (() => {
       data: { labels: axis.map(fmtD), datasets },
       options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
         plugins: { legend: { display: false }, tooltip: { filter: (c) => c.raw !== null, callbacks: { label: (c) => `${c.dataset.label}: ${fmt(c.raw, 1)} kg` } },
-          todayLine: { index: todayIdx, color: col('--muted') } },
+          todayLine: { index: todayIdx, color: col('--muted'), show: chartPlan.length > 0 } },
         scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 6, maxRotation: 0 } }, y: { ticks: { maxTicksLimit: 5, callback: (v) => v + ' kg' }, grace: '10%' } } },
       plugins: [{ id: 'todayLine', afterDraw(chart, args, opts) {
-        if (opts.index === undefined || opts.index < 0 || !chartPlan.length) return;
+        if (opts.index === undefined || opts.index < 0 || !opts.show) return;
         const x = chart.scales.x.getPixelForValue(opts.index), { top, bottom } = chart.chartArea, ctx = chart.ctx;
         ctx.save(); ctx.strokeStyle = opts.color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
         ctx.fillStyle = opts.color; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('today', x, top + 10); ctx.restore();
       } }]
     });
   }
-  function draw(id, cfg) {
-    if (charts[id]) { charts[id].destroy(); }
-    charts[id] = new Chart($('#' + id).getContext('2d'), cfg);
+  // 1.21.0: charts are created once and then updated in place (no redraw at all if nothing changed),
+  // instead of being thrown away and rebuilt on every visit to Progress.
+  const chartSig = {};
+  function draw(id, cfg, extra) {
+    const sig = JSON.stringify([cfg.type, cfg.data, cfg.options, extra === undefined ? null : extra]);
+    const ch = charts[id];
+    if (ch && ch.canvas === $('#' + id) && ch.config.type === cfg.type) {
+      if (chartSig[id] === sig) return;
+      ch.data = cfg.data; ch.options = cfg.options;
+      ch.update('none');
+    } else {
+      if (ch) ch.destroy();
+      charts[id] = new Chart($('#' + id).getContext('2d'), cfg);
+    }
+    chartSig[id] = sig;
   }
   $('#prevWeek').addEventListener('click', () => { weekOffset--; renderProgress(); });
   $('#nextWeek').addEventListener('click', () => { if (weekOffset < 0) { weekOffset++; renderProgress(); } });
@@ -1280,7 +1323,7 @@ const UI = (() => {
     const locked = !!p.startWeightKg;
     $('#pWeight').value = p.startWeightKg ?? ''; $('#pWeight').disabled = locked; $('#pWeight').placeholder = 'kg';
     const latest = Store.latestWeight();
-    const fmtDate = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); };
+    const fmtDate = (k) => { const [y, m, d] = k.split('-').map(Number); return fmtDateOpts(new Date(y, m - 1, d), { day: 'numeric', month: 'short' }); };
     $('#weightInfo').innerHTML = locked
       ? `<div><span class="muted">Started</span> <b>${fmt(p.startWeightKg, 1)} kg</b> <span class="muted">on ${fmtDate(p.startDate)}</span> · <button class="link-btn inline" id="correctStart">Correct</button></div>
          <div><span class="muted">Current</span> <b>${fmt(latest.kg, 1)} kg</b> <span class="muted">logged ${fmtDate(latest.date)}</span> · <button class="link-btn inline" data-goto="progress">Log weight in Progress</button></div>
@@ -1369,7 +1412,7 @@ const UI = (() => {
     const box = $('#backupExtras'); if (!box) return;
     const prot = await Store.storageProtected();
     const up = await Store.safetyCopy('upgrade'), rs = await Store.safetyCopy('restore');
-    const when = (x) => new Date(x.savedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const when = (x) => fmtDateOpts(new Date(x.savedAt), { day: 'numeric', month: 'short', year: 'numeric' });
     box.innerHTML = `<p class="small muted">${prot === true ? '🔒 Storage protected – the phone won’t clear this app’s data to free up space.' : prot === false ? 'Storage not yet protected – the phone could clear this app’s data if it runs very low on space, so keep regular backups.' : ''}</p>
       ${up ? `<button class="link-btn" id="dlUpgrade">Download the copy saved before the 1.20 upgrade (${when(up)})</button>` : ''}
       ${rs ? `<button class="link-btn" id="dlRestore">Download the copy saved before your last restore (${when(rs)})</button>` : ''}`;

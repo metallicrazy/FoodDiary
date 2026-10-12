@@ -59,9 +59,23 @@ const Store = (() => {
   }
   // Debounced save. Any photo that is still embedded (a new photo, or a restored old backup) is first stored once
   // in IndexedDB and replaced by a reference — only after it has been written AND read back successfully.
-  let saveTimer = null, flushing = false, flushAgain = false;
-  function save() { clearTimeout(saveTimer); saveTimer = setTimeout(flush, 50); }
+  // 1.21.0: `delay` lets busy-but-unimportant changes (the recipe draft, saved on every keystroke) wait until typing
+  // pauses, so the whole diary isn't rewritten for each letter. An earlier deadline always wins, and everything
+  // pending is written straight away when the app is hidden or closed (see the listeners below).
+  let saveTimer = null, saveDue = 0, flushing = false, flushAgain = false;
+  function save(delay = 50) {
+    const due = Date.now() + delay;
+    if (saveTimer && saveDue <= due) return;
+    clearTimeout(saveTimer); saveDue = due;
+    saveTimer = setTimeout(() => { saveTimer = null; flush(); }, delay);
+  }
+  function flushPending() { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; flush(); } }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => { if (document.hidden) flushPending(); });
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', flushPending);
+  }
   async function flush() {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
     if (flushing) { flushAgain = true; return; }
     flushing = true;
     try {
@@ -327,7 +341,7 @@ const Store = (() => {
   async function storageProtected() { try { return navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) { return null; } }
 
   /* ---- Recipe draft (auto-save) ---- */
-  function saveDraft(r) { state.recipeDraft = Object.assign(JSON.parse(JSON.stringify(r)), { draftSavedAt: new Date().toISOString() }); save(); }
+  function saveDraft(r) { state.recipeDraft = Object.assign(JSON.parse(JSON.stringify(r)), { draftSavedAt: new Date().toISOString() }); save(1000); }
   function clearDraft() { if (state.recipeDraft) { state.recipeDraft = null; save(); } }
 
   /* ---- Remembered picks: search text -> chosen food ---- */

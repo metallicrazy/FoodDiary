@@ -128,40 +128,74 @@
     return v || null;
   }
 
-  // Score a CoFID name for a query. `recent` = user has logged this food before.
-  function scoreName(query, name, { recent = false, alias = '' } = {}) {
-    const q = query.trim().toLowerCase();
-    const terms = q.split(/\s+/).filter(Boolean);
-    const lower = name.toLowerCase(), al = (alias || '').toLowerCase();
-    let score = 0;
-    for (const t of terms) {
-      let i = lower.indexOf(t), src = lower;
-      if (i < 0 && al) { i = al.indexOf(t); src = al; }
-      if (i < 0) return -Infinity;
-      const atStart = i === 0, wordStart = atStart || /[\s,(\/-]/.test(src[i - 1]);
-      score += atStart ? 6 : wordStart ? 3 : 1;
-    }
-    // Typing the friendly phrase ("boiled egg", "white bread") should win outright
-    if (al && terms.length > 1 && (al === q || al.startsWith(q + ' ') || al.startsWith(q + ','))) score += 10;
-    else if (al && (al === q || al === q + 's')) score += 4;
-    // Head of the name (before the first comma) equals the query, or its plural/singular → strong signal
-    const head = lower.split(',')[0].trim();
-    if (head === q || head === q + 's' || head === q + 'es' || head + 's' === q || head + 'es' === q) score += 6;
-    // Demotions / promotions (only when the query doesn't ask for them)
-    if (DISH.test(lower) && !DISH.test(q)) score -= 5;
-    if (EXOTIC.test(lower) && !EXOTIC.test(q)) score -= 4;
-    if (BASIC.test(lower)) score += 1;
-    if (AS_EATEN.test(lower) && !AS_EATEN.test(q)) score += 1.5;
-    if (/\braw\b/.test(lower) && !/\braw\b/.test(q) && /^(rice|pasta|spaghetti|noodles|potatoes|lentils|chickpeas|beans|quinoa|couscous|peas|broccoli|carrots|spinach|cabbage|cauliflower)\b/.test(lower)) score -= 2.5;
-    if (RARE_FORM.test(lower) && !RARE_FORM.test(q)) score -= 1.5;
-    // Mild preference for shorter names, but far weaker than before
-    score -= Math.min(2, lower.length / 60);
-    // Curated "what people mean" list
-    const cur = curatedFor(q);
-    if (cur) { const idx = cur.findIndex((re) => re.test(name)); if (idx >= 0) score += 30 - idx * 2; }
-    if (recent) score += 8;
-    return score;
+  // Query-independent facts about a name, worked out once per name and remembered (1.21.0 — the
+  // search used to re-run every regex below on all ~2,800 UK foods for every keystroke).
+  const featCache = new Map();
+  function features(name) {
+    let ft = featCache.get(name);
+    if (ft) return ft;
+    const lower = name.toLowerCase();
+    ft = {
+      lower,
+      head: lower.split(',')[0].trim(),
+      dish: DISH.test(lower), exotic: EXOTIC.test(lower), basic: BASIC.test(lower), asEaten: AS_EATEN.test(lower),
+      rawStaple: /\braw\b/.test(lower) && /^(rice|pasta|spaghetti|noodles|potatoes|lentils|chickpeas|beans|quinoa|couscous|peas|broccoli|carrots|spinach|cabbage|cauliflower)\b/.test(lower),
+      rare: RARE_FORM.test(lower),
+      lenPenalty: Math.min(2, lower.length / 60)
+    };
+    if (featCache.size > 20000) featCache.clear();
+    featCache.set(name, ft);
+    return ft;
   }
 
-  return { CURATED, scoreName, curatedFor };
+  // Prepare a query once; returns score(name, alias, recent) → number (higher = better, -Infinity = no match).
+  function prepare(query) {
+    const q = query.trim().toLowerCase();
+    const terms = q.split(/\s+/).filter(Boolean);
+    const qDish = DISH.test(q), qExotic = EXOTIC.test(q), qAsEaten = AS_EATEN.test(q), qRaw = /\braw\b/.test(q), qRare = RARE_FORM.test(q);
+    const cur = curatedFor(q);
+    const curHit = new Map(); // name → curated bonus (the regex list only depends on the query)
+    return function score(name, alias, recent) {
+      const ft = features(name);
+      const lower = ft.lower, al = alias ? alias.toLowerCase() : '';
+      let score = 0;
+      for (const t of terms) {
+        let i = lower.indexOf(t), src = lower;
+        if (i < 0 && al) { i = al.indexOf(t); src = al; }
+        if (i < 0) return -Infinity;
+        const atStart = i === 0, wordStart = atStart || /[\s,(\/-]/.test(src[i - 1]);
+        score += atStart ? 6 : wordStart ? 3 : 1;
+      }
+      // Typing the friendly phrase ("boiled egg", "white bread") should win outright
+      if (al && terms.length > 1 && (al === q || al.startsWith(q + ' ') || al.startsWith(q + ','))) score += 10;
+      else if (al && (al === q || al === q + 's')) score += 4;
+      // Head of the name (before the first comma) equals the query, or its plural/singular → strong signal
+      const head = ft.head;
+      if (head === q || head === q + 's' || head === q + 'es' || head + 's' === q || head + 'es' === q) score += 6;
+      // Demotions / promotions (only when the query doesn't ask for them)
+      if (ft.dish && !qDish) score -= 5;
+      if (ft.exotic && !qExotic) score -= 4;
+      if (ft.basic) score += 1;
+      if (ft.asEaten && !qAsEaten) score += 1.5;
+      if (ft.rawStaple && !qRaw) score -= 2.5;
+      if (ft.rare && !qRare) score -= 1.5;
+      // Mild preference for shorter names, but far weaker than before
+      score -= ft.lenPenalty;
+      // Curated "what people mean" list
+      if (cur) {
+        let b = curHit.get(name);
+        if (b === undefined) { const idx = cur.findIndex((re) => re.test(name)); b = idx >= 0 ? 30 - idx * 2 : 0; curHit.set(name, b); }
+        score += b;
+      }
+      if (recent) score += 8;
+      return score;
+    };
+  }
+
+  // Score a CoFID name for a query. `recent` = user has logged this food before.
+  function scoreName(query, name, { recent = false, alias = '' } = {}) {
+    return prepare(query)(name, alias, recent);
+  }
+
+  return { CURATED, scoreName, curatedFor, prepare };
 });

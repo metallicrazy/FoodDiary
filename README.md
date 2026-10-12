@@ -1,6 +1,6 @@
 # FoodDiary
 
-**Current version: 1.20.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
+**Current version: 1.21.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
 
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
@@ -55,7 +55,7 @@ If GOV.UK publishes a newer spreadsheet, either import it on the device (**Me �
 pip install openpyxl
 python tools/build_cofid.py "McCance_Widdowsons_Composition_of_Foods_Integrated_Dataset_2021.xlsx"
 ```
-then upload the new `data/cofid.json` and bump `VERSION` in `sw.js`.
+then run `node tools/bake_names.js` (adds the plain-English names), upload the new `data/cofid.json` and `data/cofid.js`, and bump both `VERSION` and `DATA` in `sw.js`.
 
 ## 3 · Previewing a new version before uploading
 
@@ -94,7 +94,7 @@ js/store.js           localStorage state + IndexedDB for the CoFID dataset
 js/sources.js         Open Food Facts API, CoFID search, custom foods, recipes
 js/app.js             UI: diary, search, scanner, OCR, recipes, charts, settings, backup
 sw.js                 service worker (offline shell, cached libraries & product images)
-manifest.webmanifest  PWA manifest · icons/ · data/cofid.json · tools/build_cofid.py
+manifest.webmanifest  PWA manifest · icons/ · data/cofid.json · tools/build_cofid.py · tools/bake_names.js
 HANDOVER.md           decisions, data model, release routine, testing notes (for whoever continues the work)
 ```
 

@@ -117,7 +117,8 @@
         const cw = Math.round(vw * 0.9), ch = Math.round(vh * 0.6);
         const sx = Math.round((vw - cw) / 2), sy = Math.round((vh - ch) / 2);
         const scale = Math.min(1, 1280 / cw);
-        canvas.width = Math.round(cw * scale); canvas.height = Math.round(ch * scale);
+        const tw = Math.round(cw * scale), th = Math.round(ch * scale);
+        if (canvas.width !== tw || canvas.height !== th) { canvas.width = tw; canvas.height = th; } // resizing every frame re-allocates the canvas
         ctx.drawImage(video, sx, sy, cw, ch, 0, 0, canvas.width, canvas.height);
         const found = await detector.detect(canvas);
         const hit = (found || []).map((b) => String(b.rawValue || '').replace(/\D/g, '')).find((c) => c && validRetailCode(c));

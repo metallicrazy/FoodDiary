@@ -3,11 +3,9 @@ const Sources = (() => {
   'use strict';
   const OFF_BASE = 'https://world.openfoodfacts.org';
   const OFF_UK = 'https://uk.openfoodfacts.org';
-  const UA = 'FoodDiary-PWA/1.0 (personal diet tracker)';
   const FIELDS = 'code,product_name,product_name_en,generic_name,brands,quantity,serving_size,serving_quantity,nutriments,image_front_small_url,image_front_url,image_url';
 
   let cofid = [];          // array of foods
-  let cofidIndex = null;   // lowercase names
 
   /* ---------- CoFID ---------- */
   async function loadCofid() {
@@ -34,6 +32,7 @@ const Sources = (() => {
   }
   function setCofid(arr) {
     // Hide "weighed with skin/peel/bone" variants (for weighing before peeling) and give everything a plain-English name.
+    memo = new Map();
     cofid = (arr || []).filter((f) => !/weighed with/i.test(f.cofidName || f.name)).map((f) => {
       if (f.cofidName) return f; // already processed (e.g. restored from cache)
       const cofidName = f.name;
@@ -53,17 +52,38 @@ const Sources = (() => {
     setCofid(foods);
     return foods.length;
   }
+  // 1.21.0: one ranked list per query is remembered, so the several places that show UK foods for the same
+  // search (results list, tap handling, recipe builder) don't each re-scan all ~2,800 foods. When the query just
+  // grows ("chi" → "chic"), only the foods that matched the shorter query are scored.
+  let memo = new Map(); // key → { q, recentKey, all: [{ f, score }] }
   function searchCofid(q, limit = 25) {
+    q = (q || '').trim();
     if (!q || !cofid.length) return [];
-    const recentIds = new Set((typeof Store !== 'undefined' ? Store.state.recents : []).map((f) => f.id));
-    const scored = [];
-    for (let i = 0; i < cofid.length; i++) {
-      const f = cofid[i];
-      const sc = Ranking.scoreName(q, f.cofidName || f.name, { recent: recentIds.has(f.id), alias: f.name });
-      if (sc > -Infinity) scored.push({ f, score: sc });
-    }
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, limit).map((s) => s.f);
+    const recents = typeof Store !== 'undefined' ? Store.state.recents : [];
+    const recentKey = recents.map((f) => f.id).join('|');
+    const key = q.toLowerCase();
+    let m = memo.get(key);
+    if (!m || m.recentKey !== recentKey) {
+      const recentIds = new Set(recents.map((f) => f.id));
+      const score = Ranking.prepare(q);
+      // Narrow from the longest remembered query that this one extends (same recents → same matches, only fewer).
+      let pool = null;
+      for (const prev of memo.values()) if (prev.recentKey === recentKey && key.startsWith(prev.key) && (!pool || prev.key.length > pool.key.length)) pool = prev;
+      const source = pool ? pool.matched : cofid;
+      const all = [], matched = [];
+      for (let i = 0; i < source.length; i++) {
+        const f = source[i];
+        const sc = score(f.cofidName || f.name, f.name, recentIds.has(f.id));
+        if (sc > -Infinity) { all.push({ f, score: sc }); matched.push(f); }
+      }
+      all.sort((a, b) => b.score - a.score);
+      m = { key, recentKey, all, matched };
+      memo.delete(key); memo.set(key, m);
+      if (memo.size > 12) memo.delete(memo.keys().next().value); // forget the oldest
+    } else { memo.delete(key); memo.set(key, m); } // mark as recently used
+    const out = [];
+    for (let i = 0; i < m.all.length && i < limit; i++) out.push(m.all[i].f);
+    return out;
   }
   const cofidCount = () => cofid.length;
 

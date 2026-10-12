@@ -1,23 +1,38 @@
-/* FoodDiary service worker — offline app shell + cached libraries/images. Bump VERSION when you change the app. */
-const VERSION = 'fooddiary-v1.20.0';
+/* FoodDiary service worker — offline app shell + kept-between-updates libraries, UK food list and product pictures.
+   Bump VERSION when you change the app. */
+const VERSION = 'fooddiary-v1.21.0';
 const SHELL = [
   './', 'index.html', 'css/styles.css',
   'js/nutrition.js', 'js/portions.js', 'js/names.js', 'js/ranking.js', 'js/share.js', 'js/scanner.js', 'js/store.js', 'js/sources.js', 'js/app.js',
-  'data/cofid.json', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
+  'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];
-const RUNTIME = VERSION + '-runtime';
+// The UK food list (544 KB) lives in its own cache that survives app updates (1.21.0).
+// Bump DATA only when data/cofid.json itself changes — that is what makes phones download it again.
+const DATA = 'fooddiary-data-2';
+const DATA_FILES = ['data/cofid.json'];
+// Libraries from the CDN (charts, scanner, label reading). All their addresses are pinned to exact versions,
+// so they can be kept across app updates. Bump LIBS if you change a library version in app.js / scanner.js / sources.js.
+const LIBS = 'fooddiary-libraries-1';
 // Product pictures from Open Food Facts (1.20.0): their own cache, capped, and only stored when fetched with CORS.
 // A picture loaded the normal way is an "opaque" response, which Chrome counts as ~7 MB of storage each; caching
 // hundreds of those could make Android clear the app's storage (diary included) when the phone runs low on space.
 const IMAGES = 'fooddiary-product-images';
 const IMAGE_LIMIT = 150;
+const KEEP = [VERSION, DATA, LIBS, IMAGES];
+
+// Fresh copies straight from the server (not the browser's short-term cache), so a new version never
+// installs with a stale file from the previous one.
+const fresh = (u) => new Request(u, { cache: 'reload' });
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(Promise.all([
+    caches.open(VERSION).then((c) => c.addAll(SHELL.map(fresh))),
+    caches.open(DATA).then(async (c) => { for (const u of DATA_FILES) if (!(await c.match(u))) await c.add(fresh(u)); })
+  ]).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-  // Removes old app versions, including the old uncapped picture copies that lived in the versioned runtime cache.
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== RUNTIME && k !== IMAGES).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  // Removes old app versions and the old per-version library caches (which also held uncapped picture copies).
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => !KEEP.includes(k)).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
 // Fetch with a short timeout so an offline/flaky connection never leaves the screen blank.
@@ -36,21 +51,17 @@ self.addEventListener('fetch', (e) => {
   // Live API calls: network only (the app caches results itself).
   if (/openfoodfacts\.org$/.test(url.hostname) && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/cgi/'))) return;
 
-  // Same-origin app shell: serve the cached copy INSTANTLY, then refresh the cache in the background
-  // when online. New releases are picked up by the VERSION change in this file (the app checks for
-  // that on every launch and reloads itself), so the user still gets updates promptly.
+  // Same-origin app files: served from the phone INSTANTLY (cache-first). Since 1.21.0 there is no background
+  // refresh: every file of a version is installed together when VERSION changes, so a phone can never end up
+  // with a mix of old and new files (e.g. if it opened the app while an upload was half-way through).
   if (url.origin === self.location.origin) {
     e.respondWith(caches.match(req, { ignoreSearch: true }).then((hit) => {
-      const refresh = () => fetchWithTimeout(req, 8000, { cache: 'no-cache' }).then((res) => {
-        if (res && res.ok) caches.open(VERSION).then((c) => c.put(req, res.clone()));
+      if (hit) return hit;
+      // Not cached (a file outside the list above): go to the network, but don't hang forever.
+      return fetchWithTimeout(req, 8000).then((res) => {
+        if (res && res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); }
         return res;
-      });
-      if (hit) {
-        if (navigator.onLine) e.waitUntil(refresh().catch(() => {}));
-        return hit;
-      }
-      // Not cached yet (first visit or a brand-new file): go to the network, but don't hang forever.
-      return refresh().catch(() => (req.mode === 'navigate' ? caches.match('index.html') : Response.error()));
+      }).catch(() => (req.mode === 'navigate' ? caches.match('index.html') : Response.error()));
     }));
     return;
   }
@@ -61,21 +72,27 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // CDN libraries (Chart.js, scanner, OCR + language data): cache first.
+  // CDN libraries (Chart.js, scanner, OCR + language data): cache-first, kept across updates.
   if (/jsdelivr\.net|cdn\.sheetjs\.com|unpkg\.com|tessdata/.test(url.hostname + url.pathname)) {
-    e.respondWith(caches.open(RUNTIME).then(async (c) => {
-      const hit = await c.match(req);
-      if (hit) return hit;
-      try {
-        const res = await fetchWithTimeout(req, 15000);
-        if (res.ok || res.type === 'opaque') c.put(req, res.clone());
-        return res;
-      } catch (err) {
-        return Response.error();
-      }
-    }));
+    e.respondWith(library(req));
   }
 });
+
+async function library(req) {
+  const c = await caches.open(LIBS);
+  const hit = await c.match(req.url);
+  if (hit) return hit;
+  try {
+    // Ask with CORS first so the stored copy counts at its real size; fall back to a normal request.
+    let res;
+    try { res = await fetchWithTimeout(new Request(req.url, { mode: 'cors', credentials: 'omit' }), 15000); }
+    catch (err) { res = await fetchWithTimeout(req, 15000); }
+    if (res.ok || res.type === 'opaque') await c.put(req.url, res.clone()); // a handful of files, so opaque copies are acceptable here
+    return res;
+  } catch (err) {
+    return Response.error();
+  }
+}
 
 async function productImage(req) {
   const cache = await caches.open(IMAGES);
