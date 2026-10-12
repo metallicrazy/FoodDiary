@@ -384,6 +384,59 @@
     return null;
   }
 
+  /* ---------- Real daily burn (1.22.0) ---------- */
+  // What the body actually used per day, from the owner's own data instead of a formula:
+  //   burn = average calories eaten − (weight trend change per day × 7,700 kcal/kg)
+  // Uses the last 28 days. Days with under `minKcal` logged are skipped (probably not fully logged); today is
+  // skipped (not finished). The weight trend is a line through every weigh-in in the window (Theil–Sen: the
+  // median of the slopes between every pair of readings), so one high/low reading can't swing it. Not shown until there are `minDays` logged days and
+  // at least `minReadings` weigh-ins spread over `minSpan` days.
+  const BURN_RULES = { windowDays: 28, minDays: 14, minSpan: 14, minReadings: 3, minKcal: 800, low: 1000, high: 6000 };
+  function daysBetween(a, b) {
+    const [y1, m1, d1] = a.split('-').map(Number), [y2, m2, d2] = b.split('-').map(Number);
+    return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
+  }
+  function realBurn(diary, weights, todayKey, rules = {}) {
+    const R = Object.assign({}, BURN_RULES, rules);
+    const from = addDays(todayKey, -R.windowDays);
+    const days = [];
+    let skipped = 0;
+    for (let i = 1; i <= R.windowDays; i++) {
+      const k = addDays(todayKey, -i);
+      const list = diary && diary[k];
+      if (!list || !list.length) continue;
+      const kcal = list.reduce((a, e) => a + (e.kcal || 0), 0);
+      if (kcal >= R.minKcal) days.push({ date: k, kcal }); else skipped++;
+    }
+    const readings = (weights || []).filter((w) => w && w.kg && w.date >= from && w.date <= todayKey).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
+    const span = readings.length > 1 ? daysBetween(readings[0].date, readings[readings.length - 1].date) : 0;
+    const res = { ready: false, rules: R, loggedDays: days.length, skippedDays: skipped, readings: readings.length, span };
+    if (days.length < R.minDays || readings.length < R.minReadings || span < R.minSpan) return res;
+    // Weight trend (kg per day): the median of the slopes between every pair of weigh-ins (Theil–Sen line).
+    // Unlike an ordinary straight-line fit, one odd reading (water, salt, different scales) barely moves it.
+    const xs = readings.map((w) => daysBetween(from, w.date)), ys = readings.map((w) => w.kg);
+    const slopes = [];
+    for (let i = 0; i < xs.length; i++) for (let j = i + 1; j < xs.length; j++) if (xs[j] !== xs[i]) slopes.push((ys[j] - ys[i]) / (xs[j] - xs[i]));
+    slopes.sort((a, b) => a - b);
+    const mid = slopes.length >> 1;
+    const slope = slopes.length ? (slopes.length % 2 ? slopes[mid] : (slopes[mid - 1] + slopes[mid]) / 2) : 0;
+    const intake = days.reduce((a, d) => a + d.kcal, 0) / days.length;
+    const burn = intake - slope * KCAL_PER_KG;
+    return Object.assign(res, {
+      ready: true, intake, kgPerWeek: slope * 7, burn,
+      reliable: burn >= R.low && burn <= R.high,
+      firstDate: days[days.length - 1].date, lastDate: days[0].date
+    });
+  }
+  // Lower target for the goal, or null. NEVER suggests an increase: only when it is at least `minDrop` below the
+  // current target (smaller differences are within the estimate's normal week-to-week wobble).
+  function burnSuggestion(burnRes, goalKey, currentKcal, minDrop = 100) {
+    if (!burnRes || !burnRes.ready || !burnRes.reliable || !currentKcal) return null;
+    const goal = GOALS[goalKey] || GOALS.maintain;
+    const kcal = Math.max(1200, Math.round((burnRes.burn + goal.delta) / 10) * 10);
+    return kcal <= currentKcal - minDrop ? { kcal, drop: currentKcal - kcal, goal } : null;
+  }
+
   // "10 weeks", "7 months", "about 2 years"
   function durationLabel(days) {
     if (days === null || days === undefined) return '';
@@ -406,5 +459,5 @@
     return dateKey(dt);
   }
 
-  return { ACTIVITY, GOALS, PRESETS, macrosFor, splitOf, kcalOfMacros, rebalance, healthyWeightRange, KCAL_PER_KG, smoothedWeight, averageIntake, projectWeight, daysToTarget, durationLabel, bmr, calcTargets, bmi, bmiCategory, scale, scaleExact, sum, fromOFF, parseCofidRows, parseLabelText, dateKey, addDays, round, num };
+  return { BURN_RULES, realBurn, burnSuggestion, daysBetween, ACTIVITY, GOALS, PRESETS, macrosFor, splitOf, kcalOfMacros, rebalance, healthyWeightRange, KCAL_PER_KG, smoothedWeight, averageIntake, projectWeight, daysToTarget, durationLabel, bmr, calcTargets, bmi, bmiCategory, scale, scaleExact, sum, fromOFF, parseCofidRows, parseLabelText, dateKey, addDays, round, num };
 });

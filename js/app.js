@@ -10,7 +10,7 @@ const UI = (() => {
   const DF = {};
   const fmtDateOpts = (date, opts) => { const k = JSON.stringify(opts); return (DF[k] || (DF[k] = new Intl.DateTimeFormat('en-GB', opts))).format(date); };
 
-  const APP_VERSION = '1.21.0';
+  const APP_VERSION = '1.22.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -1107,6 +1107,7 @@ const UI = (() => {
     return Array.from({ length: 7 }, (_, i) => Nutrition.dateKey(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i)));
   }
   async function renderProgress() {
+    renderBurn(); // doesn't need the chart library, so it shows even offline
     if (typeof Chart === 'undefined') {
       try { await Sources.loadScript(CDN.chart); } catch (e) { $('#weekKpis').innerHTML = '<div class="inline-note">Charts need an internet connection the first time.</div>'; return; }
     }
@@ -1146,6 +1147,70 @@ const UI = (() => {
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt(c.raw)} g (target ${fmt(T[c.dataset.label.toLowerCase()])} g)` } } }, scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true, ticks: { maxTicksLimit: 5, callback: (v) => v + ' g' } } } }
     }, [T.protein, T.carbs, T.fat]);
     renderWeight(col);
+  }
+  // Real daily burn (1.22.0): measured from the owner's own food log + weight trend. Only ever suggests a LOWER
+  // calorie target (owner's rule), and only as a suggestion with Apply / Not now.
+  function renderBurn() {
+    const box = $('#burnCard'); if (!box) return;
+    const s = Store.state, T = s.targets, todayKey = Nutrition.dateKey(new Date());
+    const r = Nutrition.realBurn(s.diary, s.weights, todayKey);
+    const R = r.rules;
+    if (!r.ready) {
+      const bar = (n, of) => `<div class="bar"><i style="width:${Math.min(100, Math.round((n / of) * 100))}%"></i></div>`;
+      const wNote = r.readings < R.minReadings ? `${r.readings} of ${R.minReadings}+ weigh-ins` : `weigh-ins span ${r.span} of ${R.minSpan} days`;
+      box.innerHTML = `<p class="small muted" style="margin-top:0">Once there's enough data, this shows how many calories your body <b>actually</b> burns a day – worked out from what you've eaten and how your weight has really changed, not a formula.</p>
+        <div class="burn-progress">
+          <div class="row"><span>Days logged (last 4 weeks)</span><b>${Math.min(r.loggedDays, R.minDays)} / ${R.minDays}</b></div>${bar(r.loggedDays, R.minDays)}
+          <div class="row"><span>Weigh-ins</span><b>${wNote}</b></div>${bar(r.readings < R.minReadings ? r.readings : r.span, r.readings < R.minReadings ? R.minReadings : R.minSpan)}
+        </div>
+        <p class="small muted">Weigh in at least a few times a week. Days with under ${fmt(R.minKcal)} kcal logged are left out, as they're probably not fully logged${r.skippedDays ? ` (${r.skippedDays} so far)` : ''}.</p>`;
+      return;
+    }
+    const calc = Nutrition.calcTargets(Object.assign({}, s.profile, { weightKg: (Store.latestWeight() || {}).kg || s.profile.weightKg }), T);
+    const burn = Math.round(r.burn / 10) * 10;
+    const eaten = Math.round(r.intake / 10) * 10;
+    const deficit = burn - eaten; // same rounding as the two figures shown, so the three always add up
+    const wk = r.kgPerWeek;
+    const trend = Math.abs(wk) < 0.05 ? 'steady' : `${wk < 0 ? 'down' : 'up'} ${fmt(Math.abs(wk), 2)} kg a week`;
+    const dShort = (k) => { const [y, m, d] = k.split('-').map(Number); return fmtDateOpts(new Date(y, m - 1, d), { day: 'numeric', month: 'short' }); };
+    const period = `${r.loggedDays} logged days, ${dShort(r.firstDate)} – ${dShort(r.lastDate)} · weight trend ${trend} (${r.readings} weigh-ins)`;
+    const facts = (withBurn) => `<div class="burn-facts">
+        ${withBurn ? `<div class="kpi burn-main"><b>${fmt(burn)}</b><small>real burn / day</small></div>` : ''}
+        <div class="kpi"><b>${fmt(eaten)}</b><small>avg eaten / day</small></div>
+        ${withBurn ? `<div class="kpi ${deficit >= 0 ? 'good' : ''}"><b>${fmt(Math.abs(deficit))}</b><small>avg ${deficit >= 0 ? 'deficit' : 'surplus'} / day</small></div>` : ''}
+      </div><p class="small muted" style="margin:0">${period}</p>`;
+    if (!r.reliable) {
+      box.innerHTML = facts(false) + `<div class="inline-note">The numbers don't add up yet (they point to about ${fmt(burn)} kcal a day, which isn't realistic). This is usually a few meals not logged, or water-weight swings. Keep logging and weighing in – it settles down.</div>`;
+      return;
+    }
+    const cmp = calc && calc.tdee ? (() => { const d = burn - Math.round(calc.tdee / 10) * 10; return `Formula estimate ${fmt(Math.round(calc.tdee / 10) * 10)} kcal – your real burn is ${Math.abs(d) < 50 ? 'about the same' : `${fmt(Math.abs(d))} kcal ${d > 0 ? 'higher' : 'lower'}`}.`; })() : '';
+    const sug = Nutrition.burnSuggestion(r, s.profile.goal, T.kcal);
+    const goal = Nutrition.GOALS[s.profile.goal] || Nutrition.GOALS.maintain;
+    const dis = s.burnDismissed;
+    const snoozed = sug && dis && Nutrition.daysBetween(dis.date, todayKey) < 7 && sug.kcal > dis.kcal - 100;
+    let action = '';
+    if (sug && !snoozed) {
+      action = `<div class="burn-suggest"><p><b>Suggested target: ${fmt(sug.kcal)} kcal</b> – ${fmt(sug.drop)} less than your current ${fmt(T.kcal)}, to ${goal.label.replace(/^./, (c) => c.toLowerCase())} based on your real burn.</p>
+        <div class="row-inline"><button class="btn primary small" id="burnApply">Apply</button><button class="btn ghost small" id="burnLater">Not now</button></div></div>`;
+    } else if (!sug) {
+      action = `<div class="burn-ok">✓ Your target of ${fmt(T.kcal)} kcal suits your goal (${goal.label.replace(/^./, (c) => c.toLowerCase())}) – no change needed.</div>`;
+    }
+    box.innerHTML = `<p class="small muted" style="margin-top:0">Measured from your last 4 weeks: what you ate, and how your weight trend actually moved.</p>
+      ${facts(true)}
+      ${cmp ? `<p class="small muted">${cmp}</p>` : ''}${action}
+      <p class="small muted" style="margin-bottom:0">Updates as you log. Water and salt can move it a little week to week. It will never suggest eating more.</p>`;
+    if ($('#burnApply')) $('#burnApply').addEventListener('click', () => {
+      const wasAuto = T.auto;
+      T.kcal = sug.kcal; T.auto = false; s.burnDismissed = null;
+      applyMacros();
+      toast(`Target lowered to ${fmt(sug.kcal)} kcal – macros rescaled.${wasAuto ? ' Calories from profile switched off so the formula doesn’t raise it again.' : ''}`, 4500);
+      renderProgress();
+    });
+    if ($('#burnLater')) $('#burnLater').addEventListener('click', () => {
+      s.burnDismissed = { kcal: sug.kcal, date: todayKey }; Store.save();
+      toast('OK – I’ll only mention it again in a week, or sooner if it drops further.', 3000);
+      renderBurn();
+    });
   }
   function renderWeight(col) {
     const s = Store.state;

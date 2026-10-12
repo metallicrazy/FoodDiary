@@ -22,6 +22,7 @@ const Store = (() => {
     cache: {},          // barcode -> food (OFF lookups)
     cofidLoadedAt: null,
     showForecast: true,
+    burnDismissed: null, // { kcal, date } — 'Not now' on a lower-target suggestion (1.22.0)
     recipeDraft: null,  // unsaved recipe being built/edited (auto-saved, 1.18.0)
     picks: {},          // normalised search text -> food the user added for it last time (1.18.0)
     onboarded: false

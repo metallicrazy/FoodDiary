@@ -447,3 +447,19 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 /* 1.20.0 upgrade notice + backup extras */
 .upgrade-list { margin: 6px 0 12px; padding-left: 20px; line-height: 1.6; }
 #backupExtras .link-btn { display: block; text-align: left; padding: 4px 0; }
+
+/* Real daily burn (1.22.0) */
+.burn-big { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 6px; }
+.burn-big b { font-size: 32px; letter-spacing: -.03em; }
+.burn-big small { color: var(--muted); font-size: 14px; }
+.burn-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; margin: 10px 0 6px; }
+.kpi.burn-main { background: var(--accent-soft); }
+.kpi.burn-main b { color: var(--accent); }
+.burn-progress { margin: 6px 0 10px; }
+.burn-progress .row { display: flex; justify-content: space-between; font-size: 13px; margin: 8px 0 4px; }
+.burn-progress .bar { height: 8px; border-radius: 6px; background: var(--card-2); overflow: hidden; }
+.burn-progress .bar i { display: block; height: 100%; background: var(--accent); border-radius: 6px; }
+.burn-suggest { border: 2px solid var(--accent); border-radius: 14px; padding: 12px; margin-top: 10px; }
+.burn-suggest p { margin: 0 0 10px; }
+.burn-suggest .row-inline { gap: 8px; }
+.burn-ok { background: var(--accent-soft); border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 10px; }
