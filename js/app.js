@@ -10,7 +10,7 @@ const UI = (() => {
   const DF = {};
   const fmtDateOpts = (date, opts) => { const k = JSON.stringify(opts); return (DF[k] || (DF[k] = new Intl.DateTimeFormat('en-GB', opts))).format(date); };
 
-  const APP_VERSION = '1.22.0';
+  const APP_VERSION = '1.23.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -158,6 +158,7 @@ const UI = (() => {
 
   function renderToday() {
     renderJourney();
+    renderTodayNotes();
     const s = Store.state;
     $('#dateLabel').textContent = dateLabel(currentDate);
     $('#dateSub').textContent = fullDate(currentDate);
@@ -204,18 +205,83 @@ const UI = (() => {
     if (!/iphone|ipad|ipod/i.test(navigator.userAgent)) $('#installHint').textContent = 'Open the browser menu (⋮) and choose “Add to Home screen” or “Install app”.';
   }
 
+  /* ---- Today notes (1.23.0): Monday check-in card + backup reminder. Only when viewing today. ---- */
+  let notesHTML = null;
+  function renderTodayNotes() {
+    const box = $('#todayNotes'); if (!box) return;
+    const today = Nutrition.dateKey(new Date());
+    const html = currentDate === today ? checkinHTML(today) + backupNudgeHTML(today) : '';
+    if (html !== notesHTML) { box.innerHTML = html; notesHTML = html; } // skip the redraw if nothing changed
+  }
+  function checkinHTML(today) {
+    const s = Store.state, wk = weekKeys(0)[0];
+    if (s.checkinDone === wk) return ''; // dismissed for this week
+    const last = weekKeys(-1);
+    const logged = last.filter((k) => Store.entries(k).length);
+    const inWeek = s.weights.filter((w) => w.date >= last[0] && w.date <= last[6]);
+    if (!logged.length && !inWeek.length) return '';
+    const T = s.targets;
+    const kcals = logged.map((k) => Nutrition.sum(Store.entries(k)).kcal);
+    const avg = kcals.length ? Math.round(kcals.reduce((a, v) => a + v, 0) / kcals.length / 10) * 10 : null;
+    const onT = kcals.filter((k) => k <= T.kcal).length;
+    const d = (k) => { const [y, m, dd] = k.split('-').map(Number); return fmtDateOpts(new Date(y, m - 1, dd), { day: 'numeric', month: 'short' }); };
+    let weight = '<span class="muted">No weigh-ins last week.</span>';
+    if (inWeek.length) {
+      const end = inWeek[inWeek.length - 1];
+      const before = s.weights.filter((w) => w.date < last[0]);
+      const start = before.length ? before[before.length - 1] : inWeek[0];
+      const ch = Math.round((end.kg - start.kg) * 10) / 10;
+      weight = start === end ? `Weight: <b>${fmt(end.kg, 1)} kg</b>` : `Weight: ${fmt(start.kg, 1)} → <b>${fmt(end.kg, 1)} kg</b> (${ch > 0 ? '+' : ch < 0 ? '−' : '±'}${fmt(Math.abs(ch), 1)} kg)`;
+    }
+    const r = Nutrition.realBurn(s.diary, s.weights, today);
+    const burn = r.ready && r.reliable ? `<p>Real burn: <b>${fmt(Math.round(r.burn / 10) * 10)} kcal</b> a day</p>` : '';
+    const sug = Nutrition.burnSuggestion(r, s.profile.goal, T.kcal);
+    const tip = sug && !burnSnoozed(sug, today) ? `<p class="checkin-tip">💡 A lower target (${fmt(sug.kcal)} kcal) is suggested from your real burn – <button class="link-btn inline" data-act="toProgress">see Progress</button></p>` : '';
+    return `<section class="card checkin">
+      <div class="card-head"><h3>Last week · ${d(last[0])} – ${d(last[6])}</h3><button class="icon-btn" data-act="checkinDone" aria-label="Dismiss last week's summary">✕</button></div>
+      <div class="kpis">
+        <div class="kpi"><b>${avg === null ? '–' : fmt(avg)}</b><small>avg kcal / day</small></div>
+        <div class="kpi"><b>${logged.length} / 7</b><small>days logged</small></div>
+        <div class="kpi ${logged.length && onT === logged.length ? 'good' : ''}"><b>${logged.length ? onT + ' / ' + logged.length : '–'}</b><small>on target</small></div>
+      </div>
+      <p>${weight}</p>${burn}${tip}
+      <button class="btn ghost block small" data-act="checkinDone">Done</button>
+    </section>`;
+  }
+  function backupNudgeHTML(today) {
+    const s = Store.state;
+    if (s.backupSnoozeUntil && today < s.backupSnoozeUntil) return '';
+    const age = s.lastBackupAt ? Nutrition.daysBetween(Nutrition.dateKey(new Date(s.lastBackupAt)), today) : null;
+    if (age === null ? Object.keys(s.diary).length < 3 : age < 7) return '';
+    return `<div class="banner backup-nudge">
+      <div><strong>💾 ${age === null ? 'No backup recorded on this phone yet' : `Last backup ${age} days ago`}</strong><br><small>Your diary is only on this phone – save a copy to OneDrive or Files.</small></div>
+      <button class="btn small" data-act="backupNow">Back up</button>
+      <button class="icon-btn" data-act="backupLater" aria-label="Remind me in 3 days">✕</button>
+    </div>`;
+  }
+  $('#todayNotes').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const s = Store.state, today = Nutrition.dateKey(new Date());
+    if (b.dataset.act === 'checkinDone') { s.checkinDone = weekKeys(0)[0]; Store.save(); renderTodayNotes(); }
+    else if (b.dataset.act === 'toProgress') goto('progress');
+    else if (b.dataset.act === 'backupLater') { s.backupSnoozeUntil = Nutrition.addDays(today, 3); Store.save(); renderTodayNotes(); toast('OK – I’ll remind you in 3 days'); }
+    else if (b.dataset.act === 'backupNow') await doBackup();
+  });
+
   function thumbHTML(food, cls = '') {
     const src = Store.photoSrc(food.image); // stored photo (photo:<id>) or a web address
     if (src) return `<div class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" onerror="this.parentNode.textContent='${emojiFor(food)}'"></div>`;
     return `<div class="thumb ${cls}">${emojiFor(food)}</div>`;
   }
   function emojiFor(f) {
+    if (f.source === 'quick') return '⚡';
     const n = (f.name || '').toLowerCase();
     const map = [[/apple|pear|banana|berry|orange|grape|fruit|melon|mango|peach|plum/, '🍎'], [/bread|toast|bagel|roll|loaf|pitta|wrap/, '🍞'], [/chicken|turkey|poultry/, '🍗'], [/beef|steak|mince|lamb|pork|bacon|ham|sausage|meat/, '🥩'], [/fish|salmon|tuna|cod|prawn|haddock|mackerel/, '🐟'], [/egg/, '🥚'], [/milk|yogurt|yoghurt|cream|cheese|butter/, '🥛'], [/rice|pasta|noodle|spaghetti/, '🍝'], [/potato|chip|fries|crisps/, '🥔'], [/salad|lettuce|spinach|kale|broccoli|carrot|veg|pepper|tomato|cucumber|onion/, '🥦'], [/chocolate|sweet|candy|biscuit|cookie|cake|dessert|ice cream/, '🍫'], [/coffee|tea/, '☕'], [/beer|wine|cider|lager|vodka|gin|whisky/, '🍺'], [/juice|drink|cola|water|squash|smoothie/, '🥤'], [/nut|almond|peanut|cashew|seed/, '🥜'], [/oat|cereal|granola|muesli|porridge/, '🥣'], [/soup|curry|stew|pie|pizza|burger|sandwich/, '🍲']];
     for (const [re, e] of map) if (re.test(n)) return e;
     return f.isRecipe || f.source === 'recipe' ? '🍲' : '🍽️';
   }
   function amountLabel(e) {
+    if (e.quick) return 'Quick add';
     const u = e.liquid ? 'ml' : 'g';
     if (e.unit && e.qty) return `${fmt(e.qty, 2)} ${e.qty === 1 ? e.unit : (e.unitPlural || e.unit + 's')} · ${fmt(e.grams)} ${u}`;
     if (e.qty && e.qty !== 1 && e.sizeG) return `${fmt(e.qty, 2)} × ${fmt(e.sizeG)} ${u} · ${fmt(e.grams)} ${u}`;
@@ -227,7 +293,7 @@ const UI = (() => {
       ${thumbHTML(f)}
       <div class="item-main">
         <div class="item-title">${esc(f.name)}</div>
-        <div class="item-sub">${f.brand ? esc(f.brand) + ' · ' : ''}${amountLabel(e)} · P ${fmt(e.protein)} · C ${fmt(e.carbs)} · F ${fmt(e.fat)}</div>
+        <div class="item-sub">${f.brand ? esc(f.brand) + ' · ' : ''}${amountLabel(e)}${e.quick && !(e.protein || e.carbs || e.fat) ? '' : ` · P ${fmt(e.protein)} · C ${fmt(e.carbs)} · F ${fmt(e.fat)}`}</div>
       </div>
       <div class="item-kcal"><b>${fmt(e.kcal)}</b><small>kcal</small></div>
     </button>`;
@@ -240,7 +306,7 @@ const UI = (() => {
     const src = Nutrition.addDays(currentDate, -1);
     const y = Store.entries(src);
     logWithDayGuard((dk) => {
-      y.forEach((e) => Store.addEntry(dk, { food: e.food, grams: e.grams, qty: e.qty, sizeG: e.sizeG, unit: e.unit, unitPlural: e.unitPlural, liquid: e.liquid, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat }));
+      y.forEach((e) => Store.addEntry(dk, { quick: e.quick || undefined, food: e.food, grams: e.grams, qty: e.qty, sizeG: e.sizeG, unit: e.unit, unitPlural: e.unitPlural, liquid: e.liquid, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat }));
       toast(`Copied ${y.length} item${y.length === 1 ? '' : 's'} to ${dateLabel(dk).toLowerCase()}`); currentDate = dk; renderToday();
     });
   });
@@ -249,7 +315,7 @@ const UI = (() => {
     const b = e.target.closest('[data-entry]');
     if (!b) return;
     const entry = Store.entries(currentDate).find((x) => x.id === b.dataset.entry);
-    if (entry) openFoodSheet(entry.food, { entry });
+    if (entry) { if (entry.quick) openQuickAdd(entry); else openFoodSheet(entry.food, { entry }); }
   });
   // Swipe between days
   let tx = null;
@@ -295,7 +361,6 @@ const UI = (() => {
           <p>${food.brand ? esc(food.brand) : ''}${food.quantity ? ' · ' + esc(food.quantity) : ''}</p>
           <p><span class="badge ${esc(food.source)}">${src}</span>${food.barcode ? '<span class="muted small">' + esc(food.barcode) + '</span>' : ''}</p>
         </div>
-        <button class="star ${Store.isFavourite(food.id) ? 'on' : ''}" id="favBtn" aria-label="Favourite">★</button>
       </div>
 
       ${portion ? `<div class="chips mode-chips"><button class="chip ${mode === 'unit' ? 'active' : ''}" data-mode="unit">By ${esc(portion.plural)}</button><button class="chip ${mode === 'grams' ? 'active' : ''}" data-mode="grams">By ${gUnit === 'ml' ? 'ml' : 'grams'}</button></div>` : ''}
@@ -370,7 +435,6 @@ const UI = (() => {
       gIn.value = mode === 'unit' ? portion.g : 100; qIn.value = 1; update();
     }));
     if (onBack) $('#backBtn').addEventListener('click', () => onBack());
-    $('#favBtn').addEventListener('click', (e) => { const on = Store.toggleFavourite(food); e.currentTarget.classList.toggle('on', on); toast(on ? 'Added to favourites' : 'Removed from favourites'); });
     if (isEdit) $('#deleteEntry').addEventListener('click', () => { Store.removeEntry(currentDate, entry.id); closeSheet(); renderToday(); toast('Removed'); });
     if ($('#shareBtn')) $('#shareBtn').addEventListener('click', () => { if (food.source === 'recipe') { const r = Store.state.recipes.find((x) => x.id === food.id); if (r) shareItem('recipe', r); } else shareItem('food', food); });
     if ($('#editCustom')) $('#editCustom').addEventListener('click', () => openCustomFoodSheet(food));
@@ -389,6 +453,51 @@ const UI = (() => {
       logWithDayGuard((dk) => { Store.addEntry(dk, e); if (fromQuery) Store.rememberPick(fromQuery, food); toast(`Added ${fmt(e.kcal)} kcal to ${dateLabel(dk).toLowerCase()}`); currentDate = dk; goto('today'); });
     });
   }
+
+  // Quick add (1.23.0): calories (+ optional macros and name) without looking up a food. Stored as a normal diary
+  // entry with `quick: true` and a tiny food snapshot (per-100 values = the totals at 100 g, so any code that
+  // scales by grams stays consistent). Not added to Recents and not offered as a recipe ingredient.
+  function openQuickAdd(entry) {
+    const e = entry || null;
+    const v = (x) => (x === null || x === undefined || x === 0 ? '' : x);
+    openSheet(`
+      <div class="sheet-title"><h2>${e ? 'Edit quick add' : 'Quick add'}</h2><button class="icon-btn" id="qaClose" aria-label="Close">✕</button></div>
+      <p class="muted small" style="margin:0 0 10px">For meals out or best guesses – just the calories, plus macros if you know them.</p>
+      <div class="form-grid">
+        <label class="span2">Calories (kcal)<input type="number" id="qaKcal" inputmode="numeric" min="1" max="10000" placeholder="e.g. 650" value="${e ? v(e.kcal) : ''}"></label>
+        <label>Protein (g)<input type="number" id="qaP" inputmode="decimal" min="0" step="0.1" placeholder="optional" value="${e ? v(e.protein) : ''}"></label>
+        <label>Carbs (g)<input type="number" id="qaC" inputmode="decimal" min="0" step="0.1" placeholder="optional" value="${e ? v(e.carbs) : ''}"></label>
+        <label>Fat (g)<input type="number" id="qaF" inputmode="decimal" min="0" step="0.1" placeholder="optional" value="${e ? v(e.fat) : ''}"></label>
+        <label>Name<input type="text" id="qaName" maxlength="60" placeholder="optional" value="${e && e.food.name !== 'Quick add' ? esc(e.food.name) : ''}"></label>
+      </div>
+      <p class="muted small" id="qaNote" style="min-height:1.2em"></p>
+      <div class="sheet-actions">${e ? '<button class="btn danger" id="qaDelete">Delete</button>' : '<button class="btn" id="qaCancel">Cancel</button>'}<button class="btn primary" id="qaSave" disabled>${e ? 'Save' : 'Add'}</button></div>`);
+    const num = (id) => { const x = parseFloat($(id).value); return Number.isFinite(x) && x >= 0 ? Math.round(x * 10) / 10 : 0; };
+    const kcalOf = () => { const x = parseInt($('#qaKcal').value, 10); return Number.isFinite(x) && x > 0 && x <= 10000 ? x : 0; };
+    const check = () => {
+      const k = kcalOf(), m = Math.round(num('#qaP') * 4 + num('#qaC') * 4 + num('#qaF') * 9);
+      $('#qaSave').disabled = !k;
+      $('#qaNote').textContent = k && m > k * 1.25 ? `Those macros add up to about ${fmt(m)} kcal – more than ${fmt(k)}. Worth a quick check.` : '';
+    };
+    ['#qaKcal', '#qaP', '#qaC', '#qaF'].forEach((id) => $(id).addEventListener('input', check));
+    check();
+    const build = () => {
+      const k = kcalOf(), p = num('#qaP'), c = num('#qaC'), f = num('#qaF');
+      const name = $('#qaName').value.trim() || 'Quick add';
+      return { quick: true, food: { id: 'quick', source: 'quick', name, kcal: k, protein: p, carbs: c, fat: f }, grams: 100, kcal: k, protein: p, carbs: c, fat: f };
+    };
+    $('#qaClose').addEventListener('click', () => closeSheet());
+    if ($('#qaCancel')) $('#qaCancel').addEventListener('click', () => closeSheet());
+    if (e) $('#qaDelete').addEventListener('click', () => { Store.removeEntry(currentDate, e.id); closeSheet(); renderToday(); toast('Removed'); });
+    $('#qaSave').addEventListener('click', () => {
+      if (!kcalOf()) return;
+      const x = build();
+      if (e) { Store.updateEntry(currentDate, e.id, x); closeSheet(); renderToday(); toast('Saved'); return; }
+      logWithDayGuard((dk) => { Store.addEntry(dk, x); toast(`Added ${fmt(x.kcal)} kcal to ${dateLabel(dk).toLowerCase()}`); currentDate = dk; goto('today'); });
+    });
+    setTimeout(() => { if (!e) $('#qaKcal') && $('#qaKcal').focus(); }, 50);
+  }
+  $('#quickAddBtn').addEventListener('click', () => openQuickAdd(null));
 
   // If the user is viewing a day other than today, confirm where the entry should go before saving.
   function logWithDayGuard(commit) {
@@ -464,13 +573,13 @@ const UI = (() => {
     const q = input.value.trim();
     if (addTab === 'results') return q ? renderResults(q, { offPending: !offResults.has(q) && q.length >= 3 }) : renderIdle();
     const s = Store.state;
-    const lists = { recents: s.recents, favourites: s.favourites, mine: s.customFoods, recipes: s.recipes.map(Sources.recipeAsFood) };
+    const lists = { recents: s.recents, mine: s.customFoods, recipes: s.recipes.map(Sources.recipeAsFood) };
     const list = lists[addTab] || [];
-    const empties = { recents: 'Foods you log will appear here for quick re-adding.', favourites: 'Tap ★ on any food to keep it here.', mine: 'Create a custom food from a photo of the nutrition label, or import one a friend shared.', recipes: 'Build a recipe once and log it as a single item — or import one a friend shared.' };
+    const empties = { recents: 'Foods you log will appear here for quick re-adding.', mine: 'Create a custom food from a photo of the nutrition label, or import one a friend shared.', recipes: 'Build a recipe once and log it as a single item — or import one a friend shared.' };
     const d = addTab === 'recipes' ? Store.state.recipeDraft : null;
     const TRASH = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
     const draftRow = d ? `<div class="draft-row"><button class="item draft-main" id="resumeDraft"><div class="thumb">✏️</div><div class="item-main"><div class="item-title">Unsaved recipe${d.name ? ': ' + esc(d.name) : ''}</div><div class="item-sub">${d.ingredients.length} ingredient${d.ingredients.length === 1 ? '' : 's'} · tap to continue</div></div></button><button class="trash-btn" id="deleteDraft" aria-label="Delete unsaved recipe" title="Delete unsaved recipe">${TRASH}</button></div>` : '';
-    $('#addContent').innerHTML = draftRow + (list.length || d ? `<div class="list">${list.map(foodRow).join('')}</div>` : `<div class="empty"><div class="empty-icon">${{ recents: '🕒', favourites: '★', mine: '🏷️', recipes: '🥘' }[addTab]}</div><p>${empties[addTab]}</p></div>`);
+    $('#addContent').innerHTML = draftRow + (list.length || d ? `<div class="list">${list.map(foodRow).join('')}</div>` : `<div class="empty"><div class="empty-icon">${{ recents: '🕒', mine: '🏷️', recipes: '🥘' }[addTab]}</div><p>${empties[addTab]}</p></div>`);
     bindFoodRows();
     if ($('#resumeDraft')) $('#resumeDraft').addEventListener('click', () => openRecipeSheet(Store.state.recipeDraft, { resume: true }));
     if ($('#deleteDraft')) $('#deleteDraft').addEventListener('click', () => {
@@ -485,9 +594,7 @@ const UI = (() => {
   function renderIdle() {
     const s = Store.state;
     const rec = s.recents.slice(0, 8);
-    const fav = s.favourites.slice(0, 8);
     let html = '';
-    if (fav.length) html += `<div class="group-title">Favourites</div><div class="list">${fav.map(foodRow).join('')}</div>`;
     if (rec.length) html += `<div class="group-title">Recent</div><div class="list">${rec.map(foodRow).join('')}</div>`;
     if (!html) html = `<div class="empty"><div class="empty-icon">🔍</div><p>Search ${Sources.cofidCount() ? 'thousands of UK foods and ' : ''}millions of barcoded products, or scan a barcode.</p></div>`;
     $('#addContent').innerHTML = html; bindFoodRows();
@@ -496,11 +603,14 @@ const UI = (() => {
     if (addTab !== 'results') return;
     const pick = Store.pickFor(q);
     const notPick = (f) => !pick || f.id !== pick.id;
-    const local = Sources.searchLocal(q).filter(notPick);
     const cof = Sources.searchCofid(q, 20).filter(notPick);
+    const fixed = Sources.correctionFor(q); // spelling-tolerant search (1.23.0)
+    let localAll = Sources.searchLocal(q);
+    if (!localAll.length && fixed) localAll = Sources.searchLocal(fixed);
+    const local = localAll.filter(notPick);
     const offAll = offResults.get(q);
     const off = offAll ? offAll.filter(notPick) : offAll;
-    let html = '';
+    let html = fixed ? `<div class="inline-note spell-note">No exact match for “${esc(q)}” – showing results for “<b>${esc(fixed)}</b>”.</div>` : '';
     if (pick) html += `<div class="group-title">Your pick last time</div><div class="list">${foodRow(pick)}</div>`;
     if (local.length) html += `<div class="group-title">My foods & recipes</div><div class="list">${local.map(foodRow).join('')}</div>`;
     if (cof.length) html += `<div class="group-title">UK foods</div><div class="list">${cof.map(foodRow).join('')}</div>`;
@@ -527,7 +637,7 @@ const UI = (() => {
   const foodIndex = new Map();
   function bindFoodRows(onPick) {
     foodIndex.clear();
-    const all = [...Object.values(Store.state.picks || {}), ...Store.state.recents, ...Store.state.favourites, ...Store.state.customFoods, ...Store.state.recipes.map(Sources.recipeAsFood), ...Object.values(Store.state.cache)];
+    const all = [...Object.values(Store.state.picks || {}), ...Store.state.recents, ...Store.state.customFoods, ...Store.state.recipes.map(Sources.recipeAsFood), ...Object.values(Store.state.cache)];
     for (const list of offResults.values()) all.push(...list);
     all.forEach((f) => foodIndex.set(f.id, f));
     Sources.searchCofid(input.value.trim(), 50).forEach((f) => foodIndex.set(f.id, f));
@@ -936,17 +1046,18 @@ const UI = (() => {
     const days = Array.from({ length: 7 }, (_, i) => Nutrition.addDays(today, -i));
     let day = today;
     const selected = new Map(); // entryId -> { food, grams }
+    const pickable = (d) => Store.entries(d).filter((e) => !e.quick); // quick-add entries have no real food/weight (1.23.0)
     openSheet(`
       <div class="sheet-title"><h2>From my diary</h2><button class="icon-btn" id="closeDP">✕</button></div>
       <p class="muted small" style="margin:0 0 8px">Pick a day, then tick the foods to add. Amounts come from what you logged.</p>
-      <div class="chips" id="dpDays">${days.map((d) => `<button class="chip ${d === today ? 'active' : ''}" data-day="${d}">${dateLabel(d)}${Store.entries(d).length ? ` <small>· ${Store.entries(d).length}</small>` : ''}</button>`).join('')}</div>
+      <div class="chips" id="dpDays">${days.map((d) => `<button class="chip ${d === today ? 'active' : ''}" data-day="${d}">${dateLabel(d)}${pickable(d).length ? ` <small>· ${pickable(d).length}</small>` : ''}</button>`).join('')}</div>
       <div class="section-head" style="margin:4px 2px 6px"><span class="muted small" id="dpCount"></span><button class="link-btn" id="dpAll">Select all</button></div>
       <div class="list" id="dpList"></div>
       <div class="sheet-actions"><button class="btn" id="dpCancel">Cancel</button><button class="btn primary" id="dpAdd" disabled>Add to recipe</button></div>`);
     const back = () => openRecipeSheet(draftRecipe, { resume: true });
     $('#closeDP').addEventListener('click', back); $('#dpCancel').addEventListener('click', back);
     const drawList = () => {
-      const list = Store.entries(day);
+      const list = pickable(day);
       $('#dpList').innerHTML = list.length ? list.map((e) => `<button class="item selectable ${selected.has(e.id) ? 'selected' : ''}" data-pick="${e.id}">
           <span class="check"></span>${thumbHTML(e.food)}
           <div class="item-main"><div class="item-title">${esc(e.food.name)}</div><div class="item-sub">${e.food.brand ? esc(e.food.brand) + ' · ' : ''}${amountLabel(e)}</div></div>
@@ -966,12 +1077,12 @@ const UI = (() => {
     });
     $('#dpList').addEventListener('click', (e) => {
       const b = e.target.closest('[data-pick]'); if (!b) return;
-      const entry = Store.entries(day).find((x) => x.id === b.dataset.pick); if (!entry) return;
+      const entry = pickable(day).find((x) => x.id === b.dataset.pick); if (!entry) return;
       if (selected.has(entry.id)) selected.delete(entry.id); else selected.set(entry.id, { food: Store.slimFood(entry.food), grams: entry.grams });
       drawList();
     });
     $('#dpAll').addEventListener('click', () => {
-      const list = Store.entries(day);
+      const list = pickable(day);
       if (list.every((e) => selected.has(e.id))) list.forEach((e) => selected.delete(e.id));
       else list.forEach((e) => selected.set(e.id, { food: Store.slimFood(e.food), grams: e.grams }));
       drawList();
@@ -1150,6 +1261,11 @@ const UI = (() => {
   }
   // Real daily burn (1.22.0): measured from the owner's own food log + weight trend. Only ever suggests a LOWER
   // calorie target (owner's rule), and only as a suggestion with Apply / Not now.
+  // 'Not now' hides a suggestion for 7 days, unless it has since dropped by another 100 kcal.
+  function burnSnoozed(sug, todayKey) {
+    const dis = Store.state.burnDismissed;
+    return !!(dis && Nutrition.daysBetween(dis.date, todayKey) < 7 && sug.kcal > dis.kcal - 100);
+  }
   function renderBurn() {
     const box = $('#burnCard'); if (!box) return;
     const s = Store.state, T = s.targets, todayKey = Nutrition.dateKey(new Date());
@@ -1186,8 +1302,7 @@ const UI = (() => {
     const cmp = calc && calc.tdee ? (() => { const d = burn - Math.round(calc.tdee / 10) * 10; return `Formula estimate ${fmt(Math.round(calc.tdee / 10) * 10)} kcal – your real burn is ${Math.abs(d) < 50 ? 'about the same' : `${fmt(Math.abs(d))} kcal ${d > 0 ? 'higher' : 'lower'}`}.`; })() : '';
     const sug = Nutrition.burnSuggestion(r, s.profile.goal, T.kcal);
     const goal = Nutrition.GOALS[s.profile.goal] || Nutrition.GOALS.maintain;
-    const dis = s.burnDismissed;
-    const snoozed = sug && dis && Nutrition.daysBetween(dis.date, todayKey) < 7 && sug.kcal > dis.kcal - 100;
+    const snoozed = sug && burnSnoozed(sug, todayKey);
     let action = '';
     if (sug && !snoozed) {
       action = `<div class="burn-suggest"><p><b>Suggested target: ${fmt(sug.kcal)} kcal</b> – ${fmt(sug.drop)} less than your current ${fmt(T.kcal)}, to ${goal.label.replace(/^./, (c) => c.toLowerCase())} based on your real burn.</p>
@@ -1477,8 +1592,15 @@ const UI = (() => {
     const box = $('#backupExtras'); if (!box) return;
     const prot = await Store.storageProtected();
     const up = await Store.safetyCopy('upgrade'), rs = await Store.safetyCopy('restore');
+    const wk = await Store.safetyCopy('weekly'), wp = await Store.safetyCopy('weekly-prev');
     const when = (x) => fmtDateOpts(new Date(x.savedAt), { day: 'numeric', month: 'short', year: 'numeric' });
-    box.innerHTML = `<p class="small muted">${prot === true ? '🔒 Storage protected – the phone won’t clear this app’s data to free up space.' : prot === false ? 'Storage not yet protected – the phone could clear this app’s data if it runs very low on space, so keep regular backups.' : ''}</p>
+    const lb = Store.state.lastBackupAt;
+    const age = lb ? Nutrition.daysBetween(Nutrition.dateKey(new Date(lb)), Nutrition.dateKey(new Date())) : null;
+    box.innerHTML = `<p class="small last-backup"><b>${lb ? `Last backup: ${when({ savedAt: lb })} (${age === 0 ? 'today' : age === 1 ? 'yesterday' : age + ' days ago'})` : 'No backup recorded on this phone yet'}</b>${lb && age >= 7 ? ' – time for a new one' : ''}</p>
+      <p class="small muted">The app also keeps an automatic copy on this phone each week (the last two). It helps if something goes wrong in the app, but not if the phone is lost – that's what your backup file is for.</p>
+      ${wk ? `<button class="link-btn" id="dlWeekly">Download this week's automatic copy (${when(wk)})</button>` : ''}
+      ${wp ? `<button class="link-btn" id="dlWeeklyPrev">Download the previous automatic copy (${when(wp)})</button>` : ''}
+      <p class="small muted">${prot === true ? '🔒 Storage protected – the phone won’t clear this app’s data to free up space.' : prot === false ? 'Storage not yet protected – the phone could clear this app’s data if it runs very low on space, so keep regular backups.' : ''}</p>
       ${up ? `<button class="link-btn" id="dlUpgrade">Download the copy saved before the 1.20 upgrade (${when(up)})</button>` : ''}
       ${rs ? `<button class="link-btn" id="dlRestore">Download the copy saved before your last restore (${when(rs)})</button>` : ''}`;
     const dl = async (which, label) => {
@@ -1491,20 +1613,31 @@ const UI = (() => {
     };
     if ($('#dlUpgrade')) $('#dlUpgrade').addEventListener('click', () => dl('upgrade', 'before-1.20-upgrade'));
     if ($('#dlRestore')) $('#dlRestore').addEventListener('click', () => dl('restore', 'before-restore'));
+    if ($('#dlWeekly')) $('#dlWeekly').addEventListener('click', () => dl('weekly', 'weekly-copy'));
+    if ($('#dlWeeklyPrev')) $('#dlWeeklyPrev').addEventListener('click', () => dl('weekly-prev', 'weekly-copy'));
   }
+  // Returns true if the file was handed over (share sheet completed, or downloaded); false if cancelled.
   async function shareOrDownload(json, name) {
     const blob = new Blob([json], { type: 'application/json' });
     const file = new File([blob], name, { type: 'application/json' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'FoodDiary backup' }); return; } catch (e) { if (e.name === 'AbortError') return; }
+      try { await navigator.share({ files: [file], title: 'FoodDiary backup' }); return true; } catch (e) { if (e.name === 'AbortError') return false; }
     }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    const a = document.createElement('a'); const url = URL.createObjectURL(blob); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
     toast('Backup downloaded');
+    return true;
   }
-  $('#backupBtn').addEventListener('click', async () => {
+  // 1.23.0: remembers when a backup was last made (drives the Today reminder and the line in Me → Backup).
+  async function doBackup() {
     await Store.flush();
-    await shareOrDownload(Store.exportJSON(), `FoodDiary-backup-${Nutrition.dateKey(new Date())}.json`);
-  });
+    const ok = await shareOrDownload(Store.exportJSON(), `FoodDiary-backup-${Nutrition.dateKey(new Date())}.json`);
+    if (ok) { Store.state.lastBackupAt = new Date().toISOString(); Store.state.backupSnoozeUntil = null; Store.save(); }
+    renderTodayNotes();
+    if ($('#view-me').classList.contains('active')) renderBackupExtras();
+    return ok;
+  }
+  $('#backupBtn').addEventListener('click', () => doBackup());
   $('#restoreFile').addEventListener('change', async (e) => {
     const file = e.target.files[0]; if (!file) return;
     if (!confirm('Restore this backup? It will replace the diary, foods and settings on this device.')) { e.target.value = ''; return; }
@@ -1578,6 +1711,7 @@ const UI = (() => {
     Store.upgrade().catch((e) => ({ upgraded: false, reason: String(e) })).then((res) => {
       if ($('#view-today').classList.contains('active')) renderToday();
       if (res && res.upgraded) showUpgradeNotice(res);
+      return Store.weeklyCopy(); // automatic weekly copy on the phone (1.23.0), after any upgrade
     });
     Store.protectStorage();
     setTimeout(checkIncomingShare, 0);

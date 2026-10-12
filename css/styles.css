@@ -407,7 +407,8 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 .name-hint { color: var(--danger); min-height: 18px; margin: 4px 0 0; }
 
 /* Add page action row (above the filter chips) */
-.action-row { display: flex; gap: 8px; margin: 0 0 10px; }
+.action-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 10px; }
+@media (max-width: 440px) { .action-row { grid-template-columns: repeat(2, 1fr); } } /* 2 × 2 on phones (1.23.0: Quick add added) */
 .action-row .btn.compact { flex: 1; padding: 8px 6px; font-size: 13.5px; border-radius: 12px; min-height: 36px; white-space: nowrap; }
 
 .choice-pop { display: flex; flex-direction: column; gap: 6px; width: 100%; background: var(--card-2); border-radius: 14px; padding: 10px; margin: 4px 0 8px; animation: fade .15s ease; }
@@ -463,3 +464,13 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 .burn-suggest p { margin: 0 0 10px; }
 .burn-suggest .row-inline { gap: 8px; }
 .burn-ok { background: var(--accent-soft); border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 10px; }
+
+/* 1.23.0: Monday check-in card + backup reminder on Today */
+#todayNotes:empty { display: none; }
+.card.checkin p { margin: 10px 2px 0; font-size: 14px; }
+.card.checkin .kpis { margin-top: 4px; }
+.card.checkin .btn.block { margin-top: 12px; }
+.checkin-tip { background: var(--accent-soft); border-radius: 12px; padding: 8px 10px; }
+.banner.backup-nudge { margin: 0 0 14px; }
+.last-backup { margin: 0 0 4px; }
+.checkin-tip .link-btn.inline { padding: 0; font-size: 14px; }

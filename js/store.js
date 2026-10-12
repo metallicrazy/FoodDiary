@@ -24,6 +24,9 @@ const Store = (() => {
     showForecast: true,
     burnDismissed: null, // { kcal, date } — 'Not now' on a lower-target suggestion (1.22.0)
     recipeDraft: null,  // unsaved recipe being built/edited (auto-saved, 1.18.0)
+    lastBackupAt: null,      // ISO time of the last 'Back up to file' that completed (1.23.0)
+    backupSnoozeUntil: null, // dateKey — ✕ on the Today backup reminder hides it until then (1.23.0)
+    checkinDone: null,       // Monday dateKey of the week whose check-in card was dismissed (1.23.0)
     picks: {},          // normalised search text -> food the user added for it last time (1.18.0)
     onboarded: false
   });
@@ -173,6 +176,21 @@ const Store = (() => {
       weights: (s.weights || []).length, favourites: (s.favourites || []).length, recents: (s.recents || []).length, photoCopies: photos, uniquePhotos: ids.size };
   }
   const SAFETY_UPGRADE = 'safety:before-1.20', SAFETY_RESTORE = 'safety:before-restore';
+  // Automatic weekly copy on the phone (1.23.0): taken on the first launch at least 7 days after the last one; the
+  // previous week's copy is kept too, so a problem noticed a few days late can still be undone. ~2 × the diary size.
+  const SAFETY_WEEKLY = 'safety:weekly', SAFETY_WEEKLY_PREV = 'safety:weekly-prev';
+  async function weeklyCopy() {
+    try {
+      const cur = await kvGet(SAFETY_WEEKLY);
+      if (cur && Date.now() - Date.parse(cur.savedAt) < 7 * 864e5) return false;
+      // Copies what is already saved (no extra write at start-up; at most the last second of changes is left out).
+      const json = localStorage.getItem(LS_KEY);
+      if (!json) return false;
+      if (cur) await kvSet(SAFETY_WEEKLY_PREV, cur);
+      await putSafetyCopy(SAFETY_WEEKLY, json);
+      return true;
+    } catch (e) { console.warn('Weekly copy skipped', e); return false; }
+  }
   async function putSafetyCopy(key, json) {
     await kvSet(key, { savedAt: new Date().toISOString(), data: json });
     const back = await kvGet(key);
@@ -219,7 +237,7 @@ const Store = (() => {
     entry.id = entry.id || uid();
     entry.time = entry.time || new Date().toISOString();
     state.diary[dateKey].push(entry);
-    pushRecent(entry.food);
+    if (!entry.quick) pushRecent(entry.food); // quick-add entries (1.23.0) aren't foods to re-add
     save();
     return entry;
   }
@@ -329,7 +347,7 @@ const Store = (() => {
     try { for (const [k] of await kvPrefix('photo:')) await kvDel(k); for (const [k] of await kvPrefix('safety:')) await kvDel(k); } catch (e) { console.warn(e); }
   }
   // Safety copies (for "download the copy saved before…")
-  async function safetyCopy(which) { const v = await kvGet(which === 'restore' ? SAFETY_RESTORE : SAFETY_UPGRADE); return v || null; }
+  async function safetyCopy(which) { const v = await kvGet({ restore: SAFETY_RESTORE, weekly: SAFETY_WEEKLY, 'weekly-prev': SAFETY_WEEKLY_PREV }[which] || SAFETY_UPGRADE); return v || null; }
 
   // Ask the browser not to clear this app's storage when the phone runs low on space.
   async function protectStorage() {
@@ -371,6 +389,6 @@ const Store = (() => {
     pushRecent, toggleFavourite, isFavourite, slimFood,
     saveCustomFood, deleteCustomFood, saveRecipe, deleteRecipe,
     logWeight, setStartWeight, latestWeight, exportJSON, saveDraft, clearDraft, pickKey, rememberPick, pickFor, importJSON, reset, uid,
-    upgrade, loadPhotos, photoSrc, putPhoto, counts, safetyCopy, protectStorage, storageProtected, flush, DATA_VERSION
+    upgrade, loadPhotos, photoSrc, putPhoto, counts, safetyCopy, weeklyCopy, protectStorage, storageProtected, flush, DATA_VERSION
   };
 })();
