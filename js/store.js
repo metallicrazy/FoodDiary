@@ -27,6 +27,8 @@ const Store = (() => {
     lastBackupAt: null,      // ISO time of the last 'Back up to file' that completed (1.23.0)
     backupSnoozeUntil: null, // dateKey — ✕ on the Today backup reminder hides it until then (1.23.0)
     picks: {},          // normalised search text -> food the user added for it last time (1.18.0)
+    recipeCategories: [],    // [{ id, name }] user-made recipe categories, kept in A–Z order (1.25.0)
+    recipeFilter: null,      // category id the Recipes tab opens on; null = All recipes (1.25.0)
     onboarded: false
   });
 
@@ -37,6 +39,11 @@ const Store = (() => {
     delete merged.checkinDone; // Monday check-in removed in 1.24.0
     merged.targets = Object.assign(defaults().targets, parsed.targets || {});
     merged.profile = Object.assign(defaults().profile, parsed.profile || {});
+    // Recipe categories (1.25.0): tidy up anything that points at a category that no longer exists.
+    if (!Array.isArray(merged.recipeCategories)) merged.recipeCategories = [];
+    const catIds = new Set(merged.recipeCategories.map((c) => c.id));
+    for (const r of merged.recipes || []) if (r.categoryId && !catIds.has(r.categoryId)) delete r.categoryId;
+    if (merged.recipeFilter && (merged.recipeFilter === 'none' ? !catIds.size : !catIds.has(merged.recipeFilter))) merged.recipeFilter = null; // 'none' = No category
     merged.dataVersion = parsed.dataVersion || 1; // data saved before 1.20.0 has no dataVersion
     if (!merged.profile.startWeightKg && merged.weights && merged.weights.length) { merged.profile.startWeightKg = merged.weights[0].kg; merged.profile.startDate = merged.weights[0].date; }
     return merged;
@@ -290,6 +297,41 @@ const Store = (() => {
   }
   function deleteRecipe(id) { state.recipes = state.recipes.filter((f) => f.id !== id); save(); }
 
+  /* ---- Recipe categories (1.25.0). A recipe has at most one: recipe.categoryId. ---- */
+  const sortCats = () => state.recipeCategories.sort((a, b) => a.name.localeCompare(b.name, 'en-GB', { sensitivity: 'base' }));
+  const catByName = (name) => state.recipeCategories.find((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase());
+  // Returns the category (an existing one if the name is already used, ignoring case), or null for a blank name.
+  function addRecipeCategory(name) {
+    name = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+    if (!name) return null;
+    const existing = catByName(name);
+    if (existing) return existing;
+    const c = { id: 'cat:' + uid(), name };
+    state.recipeCategories.push(c); sortCats(); save();
+    return c;
+  }
+  // false if the new name is blank or already used by another category.
+  function renameRecipeCategory(id, name) {
+    name = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+    const c = state.recipeCategories.find((x) => x.id === id);
+    if (!c || !name) return false;
+    const other = catByName(name);
+    if (other && other.id !== id) return false;
+    c.name = name; sortCats(); save();
+    return true;
+  }
+  // Deleting a category never deletes recipes: they (and an unsaved draft) just lose the category.
+  function deleteRecipeCategory(id) {
+    state.recipeCategories = state.recipeCategories.filter((c) => c.id !== id);
+    let n = 0;
+    for (const r of state.recipes) if (r.categoryId === id) { delete r.categoryId; n++; }
+    if (state.recipeDraft && state.recipeDraft.categoryId === id) delete state.recipeDraft.categoryId;
+    if (state.recipeFilter === id || (state.recipeFilter === 'none' && !state.recipeCategories.length)) state.recipeFilter = null;
+    save();
+    return n;
+  }
+  const recipeCategory = (id) => (id && state.recipeCategories.find((c) => c.id === id)) || null;
+
   /* ---- Weight ---- */
   function logWeight(dateKey, kg) {
     state.weights = state.weights.filter((w) => w.date !== dateKey);
@@ -387,7 +429,7 @@ const Store = (() => {
     get state() { return state; }, save, kvGet, kvSet,
     entries, addEntry, updateEntry, removeEntry,
     pushRecent, toggleFavourite, isFavourite, slimFood,
-    saveCustomFood, deleteCustomFood, saveRecipe, deleteRecipe,
+    saveCustomFood, deleteCustomFood, saveRecipe, deleteRecipe, addRecipeCategory, renameRecipeCategory, deleteRecipeCategory, recipeCategory,
     logWeight, setStartWeight, latestWeight, exportJSON, saveDraft, clearDraft, pickKey, rememberPick, pickFor, importJSON, reset, uid,
     upgrade, loadPhotos, photoSrc, putPhoto, counts, safetyCopy, weeklyCopy, protectStorage, storageProtected, flush, DATA_VERSION
   };

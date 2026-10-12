@@ -1,6 +1,6 @@
 # FoodDiary
 
-**Current version: 1.24.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
+**Current version: 1.25.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
 
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
@@ -14,6 +14,7 @@ A clean, modern food diary & calorie tracker that runs as a web app on iPhone an
 - **Journey card** at the top of Today: progress bar from starting weight to target weight (BMI), % complete, and "at your real intake: on track for <date> — averaging x kcal above/below target". Tap it to open Progress.
 - **Daily targets** (calories, protein, carbs, fat) calculated from your profile (Mifflin–St Jeor) or set manually. Diet-style presets — **Low carb** (default), **Balanced**, **Keto** with a carb-limit slider (10–50 g). Change calories and the macros rescale to keep the same split; edit one macro and the other two adjust to fit. Every change shows **Saved ✓**.
 - **Real daily burn** (Progress): once you've logged food on 14 days and weighed in across 2 weeks, the app works out how many calories your body *actually* burns a day from your own data, and shows it next to your average intake and average deficit. If your target is too high for your goal it offers a lower one (Apply / Not now) and it never suggests eating more.
+- **Recipe categories**: give each recipe a category (Breakfast, Dinner, Batch cook…) in the recipe editor – tap ＋ to make a new one, ✎ to rename or delete. On the Recipes tab, a dropdown filters the list; tap ☆ next to it to make that filter the default.
 - **Quick add** (Add page): log calories – and macros if you know them – without looking up a food. Handy for meals out.
 - **Spelling-tolerant search**: "brocoli", "chiken breast" or "yoghurt" still find the right UK foods.
 - **Backup reminder**: Today (under the calorie summary) reminds you if your last backup is over a week old, and the app keeps an automatic weekly copy on the phone (Me → Backup).

@@ -469,3 +469,25 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 #todayNotes:empty { display: none; }
 .banner.backup-nudge { margin: 14px 0 0; }
 .last-backup { margin: 0 0 4px; }
+
+/* Recipe categories (1.25.0). Native <select> so iPhone shows its wheel and Android its list; 16px text stops iOS zooming. */
+.cat-row { margin-top: 10px; }
+.cat-row > label { display: block; font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+.cat-controls { display: flex; gap: 8px; align-items: center; }
+.cat-controls select, .recipe-filter select { flex: 1; min-width: 0; padding-right: 34px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+.cat-btn { flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--card); box-shadow: var(--shadow); font-size: 20px; font-weight: 700; color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.cat-btn:active { transform: scale(.96); }
+.cat-btn.hidden { display: none; }
+.cat-panel { background: var(--card-2); border-radius: 14px; padding: 10px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.cat-panel-title { font-size: 13px; font-weight: 700; }
+.cat-new { display: flex; gap: 6px; align-items: center; }
+.cat-new input { flex: 1; min-width: 0; }
+.cat-edit-row { display: flex; gap: 8px; align-items: center; }
+.cat-edit-row input { flex: 1; min-width: 0; background: var(--card); }
+.cat-edit-row .trash-btn { width: 44px; height: 44px; }
+.cat-confirm { background: var(--card); border-radius: 12px; padding: 10px; }
+.cat-confirm p { margin: 0 0 8px; font-size: 14px; }
+.recipe-filter { display: flex; gap: 8px; align-items: center; margin: 0 0 10px; }
+.star-default { flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--card); box-shadow: var(--shadow); font-size: 22px; color: var(--muted); }
+.star-default.on { color: #f59e0b; }
+.star-default:disabled { opacity: .55; }

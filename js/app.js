@@ -10,7 +10,7 @@ const UI = (() => {
   const DF = {};
   const fmtDateOpts = (date, opts) => { const k = JSON.stringify(opts); return (DF[k] || (DF[k] = new Intl.DateTimeFormat('en-GB', opts))).format(date); };
 
-  const APP_VERSION = '1.24.0';
+  const APP_VERSION = '1.25.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -20,6 +20,7 @@ const UI = (() => {
   let currentDate = Nutrition.dateKey(new Date());
   let weekOffset = 0;
   let addTab = 'results';
+  let recipeFilterSel = null; // Recipes tab filter on screen: null = All, 'none' = No category, or a category id (1.25.0)
   let lastQuery = '';
   let searchSeq = 0;
   const charts = {};
@@ -231,6 +232,7 @@ const UI = (() => {
     else if (b.dataset.act === 'backupNow') await doBackup();
   });
 
+  const TRASH = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
   function thumbHTML(food, cls = '') {
     const src = Store.photoSrc(food.image); // stored photo (photo:<id>) or a web address
     if (src) return `<div class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" onerror="this.parentNode.textContent='${emojiFor(food)}'"></div>`;
@@ -508,7 +510,9 @@ const UI = (() => {
   $('#clearSearch').addEventListener('click', () => { input.value = ''; lastQuery = ''; $('#clearSearch').classList.add('hidden'); renderAdd(); input.focus(); });
   $('#addTabs').addEventListener('click', (e) => {
     const c = e.target.closest('.chip'); if (!c) return;
-    addTab = c.dataset.tab; $$('#addTabs .chip').forEach((x) => x.classList.toggle('active', x === c)); renderAdd();
+    addTab = c.dataset.tab; $$('#addTabs .chip').forEach((x) => x.classList.toggle('active', x === c));
+    if (addTab === 'recipes') recipeFilterSel = Store.state.recipeFilter || null; // opens on the chosen default (1.25.0)
+    renderAdd();
   });
   $('#newCustomBtn').addEventListener('click', () => openCustomFoodSheet(null));
   $('#newRecipeBtn').addEventListener('click', () => openRecipeSheet(null));
@@ -536,14 +540,52 @@ const UI = (() => {
     const q = input.value.trim();
     if (addTab === 'results') return q ? renderResults(q, { offPending: !offResults.has(q) && q.length >= 3 }) : renderIdle();
     const s = Store.state;
-    const lists = { recents: s.recents, mine: s.customFoods, recipes: s.recipes.map(Sources.recipeAsFood) };
+    // Recipes: optional category filter (only when categories exist). The list shows each recipe's category.
+    const cats = s.recipeCategories || [];
+    if (recipeFilterSel && recipeFilterSel !== 'none' && !Store.recipeCategory(recipeFilterSel)) recipeFilterSel = null;
+    if (!cats.length) recipeFilterSel = null;
+    const shownRecipes = s.recipes.filter((r) => !recipeFilterSel || (recipeFilterSel === 'none' ? !Store.recipeCategory(r.categoryId) : r.categoryId === recipeFilterSel));
+    const recipeRow = (r) => { const f = Sources.recipeAsFood(r); const c = !recipeFilterSel && Store.recipeCategory(r.categoryId); return c ? Object.assign({}, f, { brand: 'Recipe · ' + c.name }) : f; };
+    const lists = { recents: s.recents, mine: s.customFoods, recipes: shownRecipes.map(recipeRow) };
     const list = lists[addTab] || [];
+    let filterBar = '';
+    if (addTab === 'recipes' && cats.length) {
+      const count = (id) => s.recipes.filter((r) => (id === 'none' ? !Store.recipeCategory(r.categoryId) : r.categoryId === id)).length;
+      const uncategorised = count('none');
+      const isDefault = (recipeFilterSel || null) === (s.recipeFilter || null);
+      filterBar = `<div class="recipe-filter">
+        <select id="recipeFilterSel" aria-label="Show recipes in category">
+          <option value="">All recipes (${s.recipes.length})</option>
+          ${cats.map((c) => `<option value="${esc(c.id)}">${esc(c.name)} (${count(c.id)})</option>`).join('')}
+          ${uncategorised || recipeFilterSel === 'none' ? `<option value="none">No category (${uncategorised})</option>` : ''}
+        </select>
+        <button class="star-default ${isDefault ? 'on' : ''}" id="recipeDefault" type="button" ${isDefault && !recipeFilterSel ? 'disabled' : ''}
+          aria-label="${isDefault ? (recipeFilterSel ? 'Default filter – tap to go back to All recipes' : 'All recipes is the default') : 'Make this the default filter'}"
+          title="${isDefault ? (recipeFilterSel ? 'Default – tap to reset to All recipes' : 'All recipes is the default') : 'Make default'}">${isDefault ? '★' : '☆'}</button>
+      </div>`;
+    }
     const empties = { recents: 'Foods you log will appear here for quick re-adding.', mine: 'Create a custom food from a photo of the nutrition label, or import one a friend shared.', recipes: 'Build a recipe once and log it as a single item — or import one a friend shared.' };
     const d = addTab === 'recipes' ? Store.state.recipeDraft : null;
-    const TRASH = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
     const draftRow = d ? `<div class="draft-row"><button class="item draft-main" id="resumeDraft"><div class="thumb">✏️</div><div class="item-main"><div class="item-title">Unsaved recipe${d.name ? ': ' + esc(d.name) : ''}</div><div class="item-sub">${d.ingredients.length} ingredient${d.ingredients.length === 1 ? '' : 's'} · tap to continue</div></div></button><button class="trash-btn" id="deleteDraft" aria-label="Delete unsaved recipe" title="Delete unsaved recipe">${TRASH}</button></div>` : '';
-    $('#addContent').innerHTML = draftRow + (list.length || d ? `<div class="list">${list.map(foodRow).join('')}</div>` : `<div class="empty"><div class="empty-icon">${{ recents: '🕒', mine: '🏷️', recipes: '🥘' }[addTab]}</div><p>${empties[addTab]}</p></div>`);
+    const filteredEmpty = addTab === 'recipes' && recipeFilterSel && !list.length && s.recipes.length;
+    if (filteredEmpty) {
+      const nm = recipeFilterSel === 'none' ? 'without a category' : `in “${esc(Store.recipeCategory(recipeFilterSel).name)}”`;
+      $('#addContent').innerHTML = filterBar + draftRow + `<div class="empty"><div class="empty-icon">🗂️</div><p>No recipes ${nm} yet. Choose a category when you create or edit a recipe.</p></div>`;
+    } else
+    $('#addContent').innerHTML = filterBar + draftRow + (list.length || d ? `<div class="list">${list.map(foodRow).join('')}</div>` : `<div class="empty"><div class="empty-icon">${{ recents: '🕒', mine: '🏷️', recipes: '🥘' }[addTab]}</div><p>${empties[addTab]}</p></div>`);
     bindFoodRows();
+    if ($('#recipeFilterSel')) {
+      $('#recipeFilterSel').value = recipeFilterSel || '';
+      $('#recipeFilterSel').addEventListener('change', (e) => { recipeFilterSel = e.target.value || null; renderAdd(); });
+      $('#recipeDefault').addEventListener('click', () => {
+        const isDefault = (recipeFilterSel || null) === (Store.state.recipeFilter || null);
+        if (isDefault && !recipeFilterSel) return;
+        Store.state.recipeFilter = isDefault ? null : recipeFilterSel; Store.save();
+        const c = Store.recipeCategory(Store.state.recipeFilter);
+        toast(Store.state.recipeFilter ? `Recipes will open on “${Store.state.recipeFilter === 'none' ? 'No category' : c.name}”` : 'Recipes will open on All recipes');
+        renderAdd();
+      });
+    }
     if ($('#resumeDraft')) $('#resumeDraft').addEventListener('click', () => openRecipeSheet(Store.state.recipeDraft, { resume: true }));
     if ($('#deleteDraft')) $('#deleteDraft').addEventListener('click', () => {
       const dr = Store.state.recipeDraft; if (!dr) return;
@@ -802,7 +844,7 @@ const UI = (() => {
       <div class="sheet-title"><h2>Recipe</h2><button class="icon-btn" id="closeRV">✕</button></div>
       <div class="food-hero">
         <div class="thumb">${Store.photoSrc(r.image) ? `<img src="${esc(Store.photoSrc(r.image))}" alt="">` : '🥘'}</div>
-        <div class="meta"><h2>${esc(r.name)}</h2><p>${servings} serving${servings === 1 ? '' : 's'} · ${fmt(totalG)} g total · ${fmt(totalG / servings)} g per serving</p></div>
+        <div class="meta"><h2>${esc(r.name)}</h2><p>${servings} serving${servings === 1 ? '' : 's'} · ${fmt(totalG)} g total · ${fmt(totalG / servings)} g per serving</p>${Store.recipeCategory(r.categoryId) ? `<p class="muted small">Category: ${esc(Store.recipeCategory(r.categoryId).name)}</p>` : ''}</div>
       </div>
       <div class="group-title">Per serving</div>
       <div class="totals"><div><b>${fmt(per.kcal)}</b><small>kcal</small></div><div><b>${fmt(per.protein, 1)}</b><small>protein g</small></div><div><b>${fmt(per.carbs, 1)}</b><small>carbs g</small></div><div><b>${fmt(per.fat, 1)}</b><small>fat g</small></div></div>
@@ -822,7 +864,7 @@ const UI = (() => {
 
   // Does a recipe-in-progress differ from what's saved (or, for a new recipe, contain anything)?
   function recipeIsDirty(r) {
-    const sig = (x) => JSON.stringify({ n: (x.name || '').trim(), s: x.servings, t: x.totalG || null, im: x.image || null, ing: (x.ingredients || []).map((i) => [i.food && i.food.id, i.grams]) });
+    const sig = (x) => JSON.stringify({ n: (x.name || '').trim(), s: x.servings, t: x.totalG || null, im: x.image || null, c: x.categoryId || null, ing: (x.ingredients || []).map((i) => [i.food && i.food.id, i.grams]) });
     if (r.id) { const saved = Store.state.recipes.find((x) => x.id === r.id); return !saved || sig(saved) !== sig(r); }
     return !!((r.name || '').trim() || (r.ingredients || []).length || r.image);
   }
@@ -863,6 +905,15 @@ const UI = (() => {
         <label>Servings<input type="number" id="rServings" inputmode="numeric" min="1" value="${r.servings}"></label>
         <label>Cooked weight (g)<input type="number" id="rTotal" inputmode="decimal" placeholder="auto" value="${r.totalG ?? ''}"></label>
       </div>
+      <div class="cat-row">
+        <label for="rCat">Category</label>
+        <div class="cat-controls">
+          <select id="rCat"></select>
+          <button class="cat-btn" id="rCatAdd" type="button" aria-label="New category" title="New category">＋</button>
+          <button class="cat-btn" id="rCatEdit" type="button" aria-label="Rename or delete categories" title="Rename or delete categories">✎</button>
+        </div>
+      </div>
+      <div id="rCatPanel"></div>
       <div class="group-title">Ingredients</div>
       <div class="ingredients" id="rIngredients"></div>
       <div class="row-btns" style="margin:0"><button class="btn ghost" id="rFromDiary">🗓️ From my diary</button><button class="btn ghost" id="rAddIng">＋ Search foods</button></div>
@@ -898,6 +949,70 @@ const UI = (() => {
         close();
         if (b.dataset.c === 'cam') $('#rPhotoCam').click(); else if (b.dataset.c === 'gal') $('#rPhotoGal').click();
       };
+    });
+    // Category (1.25.0): one per recipe. ＋ makes a new one; ✎ renames or deletes (recipes are never deleted with it).
+    const catPanel = $('#rCatPanel');
+    const fillCats = () => {
+      const cats = Store.state.recipeCategories;
+      if (r.categoryId && !Store.recipeCategory(r.categoryId)) delete r.categoryId;
+      $('#rCat').innerHTML = `<option value="">No category</option>${cats.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}`;
+      $('#rCat').value = r.categoryId || '';
+      $('#rCatEdit').classList.toggle('hidden', !cats.length);
+    };
+    fillCats();
+    $('#rCat').addEventListener('change', (e) => { if (e.target.value) r.categoryId = e.target.value; else delete r.categoryId; autosave(); });
+    const showNewCat = () => {
+      catPanel.innerHTML = `<div class="cat-panel"><div class="cat-new"><input type="text" id="rCatNew" maxlength="40" placeholder="New category, e.g. Breakfast" enterkeyhint="done" autocomplete="off"><button class="btn primary small" id="rCatNewSave" type="button">Add</button><button class="btn text-btn small" id="rCatNewCancel" type="button">Cancel</button></div></div>`;
+      const inp = $('#rCatNew');
+      const add = () => {
+        const name = inp.value.trim(); if (!name) return inp.focus();
+        const existed = Store.state.recipeCategories.some((c) => c.name.toLowerCase() === name.toLowerCase());
+        const c = Store.addRecipeCategory(name);
+        r.categoryId = c.id; catPanel.innerHTML = ''; fillCats(); autosave();
+        toast(existed ? `“${c.name}” already exists – selected` : `Category “${c.name}” added`);
+      };
+      $('#rCatNewSave').addEventListener('click', add);
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+      $('#rCatNewCancel').addEventListener('click', () => { catPanel.innerHTML = ''; });
+      inp.focus();
+    };
+    const showEditCats = () => {
+      const cats = Store.state.recipeCategories;
+      const used = (id) => Store.state.recipes.filter((x) => x.categoryId === id).length;
+      catPanel.innerHTML = `<div class="cat-panel"><div class="cat-panel-title">Your categories <small class="muted">· tap a name to rename</small></div>
+        ${cats.map((c) => `<div class="cat-edit-row" data-row="${esc(c.id)}"><input type="text" value="${esc(c.name)}" data-cat="${esc(c.id)}" maxlength="40" enterkeyhint="done" aria-label="Category name"><span class="muted small">${used(c.id)}</span><button class="trash-btn" type="button" data-delcat="${esc(c.id)}" aria-label="Delete category ${esc(c.name)}">${TRASH}</button></div>`).join('')}
+        <button class="btn ghost block small" id="rCatDone" type="button">Done</button></div>`;
+    };
+    $('#rCatAdd').addEventListener('click', () => (catPanel.querySelector('#rCatNew') ? (catPanel.innerHTML = '') : showNewCat()));
+    $('#rCatEdit').addEventListener('click', () => (catPanel.querySelector('.cat-edit-row') ? (catPanel.innerHTML = '') : showEditCats()));
+    // Rename when the box is left or Enter is pressed (never while typing – keeps the keyboard open, see §8b).
+    catPanel.addEventListener('change', (e) => {
+      const id = e.target.dataset.cat; if (!id) return;
+      const old = Store.recipeCategory(id);
+      if (!Store.renameRecipeCategory(id, e.target.value)) { toast(e.target.value.trim() ? 'There’s already a category with that name' : 'A category needs a name'); e.target.value = old ? old.name : ''; return; }
+      fillCats(); toast('Category renamed');
+    });
+    catPanel.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset.cat) { e.preventDefault(); e.target.blur(); } });
+    catPanel.addEventListener('click', (e) => {
+      if (e.target.closest('#rCatDone')) { catPanel.innerHTML = ''; return; }
+      const del = e.target.closest('[data-delcat]');
+      if (del) {
+        const id = del.dataset.delcat, c = Store.recipeCategory(id); if (!c) return;
+        const n = Store.state.recipes.filter((x) => x.categoryId === id).length;
+        del.closest('.cat-edit-row').outerHTML = `<div class="cat-confirm" data-confirm="${esc(id)}"><p>Delete “<b>${esc(c.name)}</b>”? ${n ? `${n} recipe${n === 1 ? '' : 's'} will have no category. ` : ''}No recipes are deleted.</p><div class="row-inline"><button class="btn danger small" type="button" data-yes="${esc(id)}">Delete</button><button class="btn ghost small" type="button" data-no="1">Cancel</button></div></div>`;
+        return;
+      }
+      const yes = e.target.closest('[data-yes]');
+      if (yes) {
+        const c = Store.recipeCategory(yes.dataset.yes);
+        Store.deleteRecipeCategory(yes.dataset.yes);
+        if (r.categoryId === yes.dataset.yes) delete r.categoryId;
+        fillCats(); autosave();
+        if (Store.state.recipeCategories.length) showEditCats(); else catPanel.innerHTML = '';
+        toast(`Category “${c ? c.name : ''}” deleted`);
+        return;
+      }
+      if (e.target.closest('[data-no]')) showEditCats();
     });
     // Rebuild the ingredient rows only when the list itself changes (add/remove).
     // Typing in a gram box must NOT rebuild the rows — that replaces the focused box and closes the keyboard.
@@ -937,9 +1052,11 @@ const UI = (() => {
       const servings = Math.max(1, parseInt($('#rServings').value, 10) || 1);
       const tot = Nutrition.sum(r.ingredients.map((x) => Nutrition.scaleExact(x.food, x.grams)));
       const per100 = { kcal: Math.round((tot.kcal / totalG) * 100), protein: +((tot.protein / totalG) * 100).toFixed(1), carbs: +((tot.carbs / totalG) * 100).toFixed(1), fat: +((tot.fat / totalG) * 100).toFixed(1) };
-      const saved = Store.saveRecipe({ id: r.id, name, servings, totalG, ingredients: r.ingredients, per100, servingG: Math.round(totalG / servings), servingLabel: '1 serving', image: r.image });
+      const saved = Store.saveRecipe({ id: r.id, name, servings, totalG, ingredients: r.ingredients, per100, servingG: Math.round(totalG / servings), servingLabel: '1 serving', image: r.image, categoryId: Store.recipeCategory(r.categoryId) ? r.categoryId : undefined });
       Store.clearDraft();
-      closeSheet(); toast('Recipe saved'); addTab = 'recipes'; $$('#addTabs .chip').forEach((x) => x.classList.toggle('active', x.dataset.tab === 'recipes')); renderAdd();
+      closeSheet(); toast('Recipe saved'); addTab = 'recipes';
+      if (recipeFilterSel && recipeFilterSel !== (saved.categoryId || 'none')) recipeFilterSel = null; // don't hide the recipe just saved
+      $$('#addTabs .chip').forEach((x) => x.classList.toggle('active', x.dataset.tab === 'recipes')); renderAdd();
       openFoodSheet(Sources.recipeAsFood(saved));
     });
     if (isEdit) $('#rDelete').addEventListener('click', () => { Store.deleteRecipe(r.id); Store.clearDraft(); closeSheet(); renderAdd(); toast('Recipe deleted'); });
