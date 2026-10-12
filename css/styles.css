@@ -407,9 +407,11 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 .name-hint { color: var(--danger); min-height: 18px; margin: 4px 0 0; }
 
 /* Add page action row (above the filter chips) */
-.action-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 10px; }
-@media (max-width: 440px) { .action-row { grid-template-columns: repeat(2, 1fr); } } /* 2 × 2 on phones (1.23.0: Quick add added) */
-.action-row .btn.compact { flex: 1; padding: 8px 6px; font-size: 13.5px; border-radius: 12px; min-height: 36px; white-space: nowrap; }
+/* Add page buttons: always ONE row of four, never scrolling (1.26.0). Short labels; text shrinks a little on the
+   narrowest phones (320 px wide) and is cut with "…" rather than wrapping if a phone uses very large text. */
+.action-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 0 10px; }
+.action-row .btn.compact { min-width: 0; padding: 8px 4px; font-size: clamp(12px, 3.6vw, 14px); border-radius: 12px; min-height: 40px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; text-align: center; line-height: 24px; }
+@media (max-width: 340px) { .action-row { gap: 4px; } .action-row .btn.compact { padding: 8px 2px; font-size: 11.5px; } } /* iPhone SE (1st gen) and similar */
 
 .choice-pop { display: flex; flex-direction: column; gap: 6px; width: 100%; background: var(--card-2); border-radius: 14px; padding: 10px; margin: 4px 0 8px; animation: fade .15s ease; }
 .choice-pop .btn { min-height: 44px; }
