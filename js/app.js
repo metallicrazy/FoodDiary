@@ -6,7 +6,7 @@ const UI = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, dp = 0) => (n === null || n === undefined || Number.isNaN(n)) ? '–' : Number(n).toLocaleString('en-GB', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
 
-  const APP_VERSION = '1.19.1';
+  const APP_VERSION = '1.20.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -201,7 +201,8 @@ const UI = (() => {
   }
 
   function thumbHTML(food, cls = '') {
-    if (food.image) return `<div class="thumb ${cls}"><img src="${esc(food.image)}" alt="" loading="lazy" onerror="this.parentNode.textContent='${emojiFor(food)}'"></div>`;
+    const src = Store.photoSrc(food.image); // stored photo (photo:<id>) or a web address
+    if (src) return `<div class="thumb ${cls}"><img src="${esc(src)}" alt="" loading="lazy" onerror="this.parentNode.textContent='${emojiFor(food)}'"></div>`;
     return `<div class="thumb ${cls}">${emojiFor(food)}</div>`;
   }
   function emojiFor(f) {
@@ -725,7 +726,7 @@ const UI = (() => {
     openSheet(`
       <div class="sheet-title"><h2>Recipe</h2><button class="icon-btn" id="closeRV">✕</button></div>
       <div class="food-hero">
-        <div class="thumb">${r.image ? `<img src="${esc(r.image)}" alt="">` : '🥘'}</div>
+        <div class="thumb">${Store.photoSrc(r.image) ? `<img src="${esc(Store.photoSrc(r.image))}" alt="">` : '🥘'}</div>
         <div class="meta"><h2>${esc(r.name)}</h2><p>${servings} serving${servings === 1 ? '' : 's'} · ${fmt(totalG)} g total · ${fmt(totalG / servings)} g per serving</p></div>
       </div>
       <div class="group-title">Per serving</div>
@@ -773,7 +774,7 @@ const UI = (() => {
     openSheet(`
       <div class="sheet-title"><h2>${isEdit ? 'Edit recipe' : 'New recipe'}</h2><button class="icon-btn" id="closeR">✕</button></div>
       <div class="recipe-photo">
-        <div class="thumb" id="rThumb">${r.image ? `<img src="${esc(r.image)}" alt="">` : '🥘'}</div>
+        <div class="thumb" id="rThumb">${Store.photoSrc(r.image) ? `<img src="${esc(Store.photoSrc(r.image))}" alt="">` : '🥘'}</div>
         <div class="recipe-photo-btns">
           <button class="btn ghost photo-btn" id="rPhotoBtn" type="button">📸 ${r.image ? 'Change photo' : 'Add photo'}</button>
           ${r.image ? '<button class="btn text-btn" id="rPhotoRemove" type="button">Remove photo</button>' : ''}
@@ -800,7 +801,7 @@ const UI = (() => {
     // Recipe photo: same Take photo / Choose from gallery chooser as custom foods
     const setRecipePhoto = (img) => {
       r.image = img;
-      $('#rThumb').innerHTML = img ? `<img src="${esc(img)}" alt="">` : '🥘';
+      $('#rThumb').innerHTML = Store.photoSrc(img) ? `<img src="${esc(Store.photoSrc(img))}" alt="">` : '🥘';
       $('#rPhotoBtn').textContent = img ? '📸 Change photo' : '📸 Add photo';
       const rm = $('#rPhotoRemove');
       if (img && !rm) $('#rPhotoBtn').insertAdjacentHTML('afterend', '<button class="btn text-btn" id="rPhotoRemove" type="button">Remove photo</button>');
@@ -1271,6 +1272,7 @@ const UI = (() => {
     if (msg) toast(msg, 1400);
   }
   function renderMe() {
+    renderBackupExtras();
     const s = Store.state, p = s.profile, T = s.targets;
     const fill = (sel, obj) => { $(sel).innerHTML = Object.entries(obj).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join(''); };
     fill('#pActivity', Nutrition.ACTIVITY); fill('#pGoal', Nutrition.GOALS);
@@ -1362,9 +1364,27 @@ const UI = (() => {
     catch (err) { console.error(err); toast('Import failed: ' + err.message, 4000); }
     e.target.value = ''; renderMe();
   });
-  $('#backupBtn').addEventListener('click', async () => {
-    const json = Store.exportJSON();
-    const name = `FoodDiary-backup-${Nutrition.dateKey(new Date())}.json`;
+  // Backup card extras (1.20.0): is storage protected from being cleared, and downloads of the safety copies.
+  async function renderBackupExtras() {
+    const box = $('#backupExtras'); if (!box) return;
+    const prot = await Store.storageProtected();
+    const up = await Store.safetyCopy('upgrade'), rs = await Store.safetyCopy('restore');
+    const when = (x) => new Date(x.savedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    box.innerHTML = `<p class="small muted">${prot === true ? '🔒 Storage protected – the phone won’t clear this app’s data to free up space.' : prot === false ? 'Storage not yet protected – the phone could clear this app’s data if it runs very low on space, so keep regular backups.' : ''}</p>
+      ${up ? `<button class="link-btn" id="dlUpgrade">Download the copy saved before the 1.20 upgrade (${when(up)})</button>` : ''}
+      ${rs ? `<button class="link-btn" id="dlRestore">Download the copy saved before your last restore (${when(rs)})</button>` : ''}`;
+    const dl = async (which, label) => {
+      const c = await Store.safetyCopy(which); if (!c) return;
+      const data = JSON.parse(c.data); const photos = {};
+      const walk = (o) => { if (!o || typeof o !== 'object') return; if (Array.isArray(o)) return o.forEach(walk); for (const k in o) { const v = o[k]; if (k === 'image' && typeof v === 'string' && v.startsWith('photo:')) { const src = Store.photoSrc(v); if (src) photos[v.slice(6)] = src; } else if (v && typeof v === 'object') walk(v); } };
+      walk(data);
+      const json = JSON.stringify({ app: 'FoodDiary', format: 2, exportedAt: c.savedAt, data, photos }, null, 1);
+      await shareOrDownload(json, `FoodDiary-${label}-${c.savedAt.slice(0, 10)}.json`);
+    };
+    if ($('#dlUpgrade')) $('#dlUpgrade').addEventListener('click', () => dl('upgrade', 'before-1.20-upgrade'));
+    if ($('#dlRestore')) $('#dlRestore').addEventListener('click', () => dl('restore', 'before-restore'));
+  }
+  async function shareOrDownload(json, name) {
     const blob = new Blob([json], { type: 'application/json' });
     const file = new File([blob], name, { type: 'application/json' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1372,15 +1392,19 @@ const UI = (() => {
     }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
     toast('Backup downloaded');
+  }
+  $('#backupBtn').addEventListener('click', async () => {
+    await Store.flush();
+    await shareOrDownload(Store.exportJSON(), `FoodDiary-backup-${Nutrition.dateKey(new Date())}.json`);
   });
   $('#restoreFile').addEventListener('change', async (e) => {
     const file = e.target.files[0]; if (!file) return;
     if (!confirm('Restore this backup? It will replace the diary, foods and settings on this device.')) { e.target.value = ''; return; }
-    try { Store.importJSON(await file.text()); toast('Backup restored'); renderMe(); renderToday(); }
+    try { const c = await Store.importJSON(await file.text()); toast(`Backup restored – ${c.entries} diary entries, ${c.recipes} recipes, ${c.uniquePhotos} photos`, 4000); renderMe(); renderToday(); }
     catch (err) { toast('Restore failed: ' + err.message, 4000); }
     e.target.value = '';
   });
-  $('#resetBtn').addEventListener('click', () => { if (confirm('Erase all diary entries, foods and settings on this device?')) { Store.reset(); renderMe(); toast('Erased'); } });
+  $('#resetBtn').addEventListener('click', async () => { if (confirm('Erase all diary entries, foods, photos and settings on this device?')) { await Store.reset(); renderMe(); renderToday(); toast('Erased'); } });
 
   /* ===================== Sheet backdrop / init ===================== */
   $('.sheet-backdrop').addEventListener('click', () => closeSheet());
@@ -1422,10 +1446,33 @@ const UI = (() => {
   $('#checkUpdates').addEventListener('click', () => checkForUpdates(true));
   $('#appVersion').textContent = 'v' + APP_VERSION;
 
+  function showUpgradeNotice(res) {
+    const c = res.after || {};
+    const pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+    openSheet(`<div class="sheet-title"><h2>Data upgraded ✓</h2></div>
+      <p>Everything checked out after moving to the new storage:</p>
+      <ul class="upgrade-list">
+        <li>${pl(c.entries || 0, 'diary entry').replace('entrys', 'entries')} across ${pl(c.days || 0, 'day')}</li>
+        <li>${pl(c.recipes || 0, 'recipe')} · ${pl(c.customFoods || 0, 'custom food')}</li>
+        <li>${pl(c.weights || 0, 'weight reading')}</li>
+        <li>${c.uniquePhotos ? `${pl(c.uniquePhotos, 'photo')} now stored once (${c.photoCopies === c.uniquePhotos ? 'no duplicates' : `previously saved ${c.photoCopies} times`})` : 'No photos needed moving'}</li>
+      </ul>
+      <p class="small muted">A copy of your data from before the upgrade is kept on this phone – Me → Backup.</p>
+      <div class="sheet-actions"><button class="btn primary" id="upOk">OK</button></div>`);
+    $('#upOk').addEventListener('click', () => closeSheet());
+  }
+
   async function init() {
-    renderToday();
-    setTimeout(checkIncomingShare, 0);
     Sources.loadCofid().then((n) => { if (n && $('#view-add').classList.contains('active')) renderAdd(); });
+    renderToday(); // draw straight away; stored photos appear as soon as they're loaded (a few ms)
+    // One-time data upgrade (1.20.0). It runs on a copy, then applies the same photo change to the live data,
+    // so anything logged while it runs is kept either way.
+    Store.upgrade().catch((e) => ({ upgraded: false, reason: String(e) })).then((res) => {
+      if ($('#view-today').classList.contains('active')) renderToday();
+      if (res && res.upgraded) showUpgradeNotice(res);
+    });
+    Store.protectStorage();
+    setTimeout(checkIncomingShare, 0);
     setupUpdates();
     // Recalculate "Today" when the app returns to foreground (date may have changed)
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { const t = Nutrition.dateKey(new Date()); if (currentDate !== t && dateLabel(currentDate) === 'Yesterday') currentDate = t; if ($('#view-today').classList.contains('active')) renderToday(); } });

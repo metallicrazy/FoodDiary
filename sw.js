@@ -1,17 +1,23 @@
 /* FoodDiary service worker — offline app shell + cached libraries/images. Bump VERSION when you change the app. */
-const VERSION = 'fooddiary-v1.19.1';
+const VERSION = 'fooddiary-v1.20.0';
 const SHELL = [
   './', 'index.html', 'css/styles.css',
   'js/nutrition.js', 'js/portions.js', 'js/names.js', 'js/ranking.js', 'js/share.js', 'js/scanner.js', 'js/store.js', 'js/sources.js', 'js/app.js',
   'data/cofid.json', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];
 const RUNTIME = VERSION + '-runtime';
+// Product pictures from Open Food Facts (1.20.0): their own cache, capped, and only stored when fetched with CORS.
+// A picture loaded the normal way is an "opaque" response, which Chrome counts as ~7 MB of storage each; caching
+// hundreds of those could make Android clear the app's storage (diary included) when the phone runs low on space.
+const IMAGES = 'fooddiary-product-images';
+const IMAGE_LIMIT = 150;
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== RUNTIME).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  // Removes old app versions, including the old uncapped picture copies that lived in the versioned runtime cache.
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== RUNTIME && k !== IMAGES).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
 // Fetch with a short timeout so an offline/flaky connection never leaves the screen blank.
@@ -49,8 +55,14 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // CDN libraries (Chart.js, scanner, OCR + language data) and product images: cache first.
-  if (/jsdelivr\.net|cdn\.sheetjs\.com|unpkg\.com|tessdata|openfoodfacts\.org/.test(url.hostname + url.pathname)) {
+  // Product pictures: capped cache of real (non-opaque) responses only.
+  if (/(^|\.)openfoodfacts\.(org|net)$/.test(url.hostname) && (req.destination === 'image' || /\.(jpe?g|png|webp)$/i.test(url.pathname))) {
+    e.respondWith(productImage(req));
+    return;
+  }
+
+  // CDN libraries (Chart.js, scanner, OCR + language data): cache first.
+  if (/jsdelivr\.net|cdn\.sheetjs\.com|unpkg\.com|tessdata/.test(url.hostname + url.pathname)) {
     e.respondWith(caches.open(RUNTIME).then(async (c) => {
       const hit = await c.match(req);
       if (hit) return hit;
@@ -64,3 +76,22 @@ self.addEventListener('fetch', (e) => {
     }));
   }
 });
+
+async function productImage(req) {
+  const cache = await caches.open(IMAGES);
+  const hit = await cache.match(req.url);
+  if (hit) return hit;
+  try {
+    // Ask for the picture with CORS so the stored copy counts at its real size (a few KB).
+    const res = await fetchWithTimeout(new Request(req.url, { mode: 'cors', credentials: 'omit' }), 15000);
+    if (res.ok && res.type !== 'opaque') {
+      await cache.put(req.url, res.clone());
+      const keys = await cache.keys();
+      if (keys.length > IMAGE_LIMIT) await Promise.all(keys.slice(0, keys.length - IMAGE_LIMIT).map((k) => cache.delete(k))); // oldest first
+    }
+    return res;
+  } catch (err) {
+    // CORS not available (or offline): show the picture normally, but don't store it.
+    try { return await fetch(req); } catch (e) { return Response.error(); }
+  }
+}

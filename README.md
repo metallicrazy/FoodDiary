@@ -1,6 +1,6 @@
 # FoodDiary
 
-**Current version: 1.19.1** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
+**Current version: 1.20.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
 
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
@@ -69,7 +69,7 @@ Unzip the release and **double-click `index.html`** — it opens in your browser
 - **Scanning:** hold the barcode 10–15 cm from the camera in good light. If a product isn't in Open Food Facts yet, FoodDiary offers to create it from the nutrition label and remembers the barcode.
 - **Label photos:** straight-on, well lit, table filling the frame. Always glance over the numbers — OCR is good, not perfect.
 - **Search etiquette:** product search uses the free Open Food Facts API, which allows about 10 searches a minute. The app waits until you pause typing (or press search) before querying.
-- **Backups:** Me → Back up to file → save to OneDrive via the share sheet. Restoring replaces the data on the device.
+- **Backups:** Me → Back up to file → save to OneDrive via the share sheet. Each photo is included once, so files stay small. Restoring replaces the data on the device; the app keeps a copy of what was there first (Me → Backup), and old backup files still restore fine.
 
 ---
 

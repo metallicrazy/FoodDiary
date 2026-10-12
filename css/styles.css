@@ -443,3 +443,7 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 .rv-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
 .rv-row { display: flex; align-items: center; gap: 12px; background: var(--card-2); border-radius: 14px; padding: 8px 12px; }
 .rv-row .thumb { width: 40px; height: 40px; border-radius: 10px; font-size: 18px; background: var(--card); }
+
+/* 1.20.0 upgrade notice + backup extras */
+.upgrade-list { margin: 6px 0 12px; padding-left: 20px; line-height: 1.6; }
+#backupExtras .link-btn { display: block; text-align: left; padding: 4px 0; }
