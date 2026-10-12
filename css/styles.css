@@ -465,12 +465,7 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 .burn-suggest .row-inline { gap: 8px; }
 .burn-ok { background: var(--accent-soft); border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-top: 10px; }
 
-/* 1.23.0: Monday check-in card + backup reminder on Today */
+/* 1.23.0: backup reminder on Today (between the calorie summary and the food log since 1.24.0) */
 #todayNotes:empty { display: none; }
-.card.checkin p { margin: 10px 2px 0; font-size: 14px; }
-.card.checkin .kpis { margin-top: 4px; }
-.card.checkin .btn.block { margin-top: 12px; }
-.checkin-tip { background: var(--accent-soft); border-radius: 12px; padding: 8px 10px; }
-.banner.backup-nudge { margin: 0 0 14px; }
+.banner.backup-nudge { margin: 14px 0 0; }
 .last-backup { margin: 0 0 4px; }
-.checkin-tip .link-btn.inline { padding: 0; font-size: 14px; }

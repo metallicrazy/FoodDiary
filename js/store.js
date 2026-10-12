@@ -26,7 +26,6 @@ const Store = (() => {
     recipeDraft: null,  // unsaved recipe being built/edited (auto-saved, 1.18.0)
     lastBackupAt: null,      // ISO time of the last 'Back up to file' that completed (1.23.0)
     backupSnoozeUntil: null, // dateKey — ✕ on the Today backup reminder hides it until then (1.23.0)
-    checkinDone: null,       // Monday dateKey of the week whose check-in card was dismissed (1.23.0)
     picks: {},          // normalised search text -> food the user added for it last time (1.18.0)
     onboarded: false
   });
@@ -35,6 +34,7 @@ const Store = (() => {
 
   function normalise(parsed) {
     const merged = Object.assign(defaults(), parsed);
+    delete merged.checkinDone; // Monday check-in removed in 1.24.0
     merged.targets = Object.assign(defaults().targets, parsed.targets || {});
     merged.profile = Object.assign(defaults().profile, parsed.profile || {});
     merged.dataVersion = parsed.dataVersion || 1; // data saved before 1.20.0 has no dataVersion

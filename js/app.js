@@ -10,7 +10,7 @@ const UI = (() => {
   const DF = {};
   const fmtDateOpts = (date, opts) => { const k = JSON.stringify(opts); return (DF[k] || (DF[k] = new Intl.DateTimeFormat('en-GB', opts))).format(date); };
 
-  const APP_VERSION = '1.23.0';
+  const APP_VERSION = '1.24.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -205,48 +205,13 @@ const UI = (() => {
     if (!/iphone|ipad|ipod/i.test(navigator.userAgent)) $('#installHint').textContent = 'Open the browser menu (⋮) and choose “Add to Home screen” or “Install app”.';
   }
 
-  /* ---- Today notes (1.23.0): Monday check-in card + backup reminder. Only when viewing today. ---- */
+  /* ---- Today notes (1.23.0): backup reminder. Only when viewing today. (The Monday check-in card was removed in 1.24.0.) ---- */
   let notesHTML = null;
   function renderTodayNotes() {
     const box = $('#todayNotes'); if (!box) return;
     const today = Nutrition.dateKey(new Date());
-    const html = currentDate === today ? checkinHTML(today) + backupNudgeHTML(today) : '';
+    const html = currentDate === today ? backupNudgeHTML(today) : '';
     if (html !== notesHTML) { box.innerHTML = html; notesHTML = html; } // skip the redraw if nothing changed
-  }
-  function checkinHTML(today) {
-    const s = Store.state, wk = weekKeys(0)[0];
-    if (s.checkinDone === wk) return ''; // dismissed for this week
-    const last = weekKeys(-1);
-    const logged = last.filter((k) => Store.entries(k).length);
-    const inWeek = s.weights.filter((w) => w.date >= last[0] && w.date <= last[6]);
-    if (!logged.length && !inWeek.length) return '';
-    const T = s.targets;
-    const kcals = logged.map((k) => Nutrition.sum(Store.entries(k)).kcal);
-    const avg = kcals.length ? Math.round(kcals.reduce((a, v) => a + v, 0) / kcals.length / 10) * 10 : null;
-    const onT = kcals.filter((k) => k <= T.kcal).length;
-    const d = (k) => { const [y, m, dd] = k.split('-').map(Number); return fmtDateOpts(new Date(y, m - 1, dd), { day: 'numeric', month: 'short' }); };
-    let weight = '<span class="muted">No weigh-ins last week.</span>';
-    if (inWeek.length) {
-      const end = inWeek[inWeek.length - 1];
-      const before = s.weights.filter((w) => w.date < last[0]);
-      const start = before.length ? before[before.length - 1] : inWeek[0];
-      const ch = Math.round((end.kg - start.kg) * 10) / 10;
-      weight = start === end ? `Weight: <b>${fmt(end.kg, 1)} kg</b>` : `Weight: ${fmt(start.kg, 1)} → <b>${fmt(end.kg, 1)} kg</b> (${ch > 0 ? '+' : ch < 0 ? '−' : '±'}${fmt(Math.abs(ch), 1)} kg)`;
-    }
-    const r = Nutrition.realBurn(s.diary, s.weights, today);
-    const burn = r.ready && r.reliable ? `<p>Real burn: <b>${fmt(Math.round(r.burn / 10) * 10)} kcal</b> a day</p>` : '';
-    const sug = Nutrition.burnSuggestion(r, s.profile.goal, T.kcal);
-    const tip = sug && !burnSnoozed(sug, today) ? `<p class="checkin-tip">💡 A lower target (${fmt(sug.kcal)} kcal) is suggested from your real burn – <button class="link-btn inline" data-act="toProgress">see Progress</button></p>` : '';
-    return `<section class="card checkin">
-      <div class="card-head"><h3>Last week · ${d(last[0])} – ${d(last[6])}</h3><button class="icon-btn" data-act="checkinDone" aria-label="Dismiss last week's summary">✕</button></div>
-      <div class="kpis">
-        <div class="kpi"><b>${avg === null ? '–' : fmt(avg)}</b><small>avg kcal / day</small></div>
-        <div class="kpi"><b>${logged.length} / 7</b><small>days logged</small></div>
-        <div class="kpi ${logged.length && onT === logged.length ? 'good' : ''}"><b>${logged.length ? onT + ' / ' + logged.length : '–'}</b><small>on target</small></div>
-      </div>
-      <p>${weight}</p>${burn}${tip}
-      <button class="btn ghost block small" data-act="checkinDone">Done</button>
-    </section>`;
   }
   function backupNudgeHTML(today) {
     const s = Store.state;
@@ -262,9 +227,7 @@ const UI = (() => {
   $('#todayNotes').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-act]'); if (!b) return;
     const s = Store.state, today = Nutrition.dateKey(new Date());
-    if (b.dataset.act === 'checkinDone') { s.checkinDone = weekKeys(0)[0]; Store.save(); renderTodayNotes(); }
-    else if (b.dataset.act === 'toProgress') goto('progress');
-    else if (b.dataset.act === 'backupLater') { s.backupSnoozeUntil = Nutrition.addDays(today, 3); Store.save(); renderTodayNotes(); toast('OK – I’ll remind you in 3 days'); }
+    if (b.dataset.act === 'backupLater') { s.backupSnoozeUntil = Nutrition.addDays(today, 3); Store.save(); renderTodayNotes(); toast('OK – I’ll remind you in 3 days'); }
     else if (b.dataset.act === 'backupNow') await doBackup();
   });
 
@@ -1352,9 +1315,9 @@ const UI = (() => {
     if (b) {
       const h = s.profile.heightCm, m2 = (h / 100) ** 2, kg = latest.kg;
       const LO = 12, HI = 40, pct = (v) => Math.max(0, Math.min(100, ((v - LO) / (HI - LO)) * 100));
-      const kgAt = (bmiV) => Math.round(bmiV * m2 * 10) / 10;
+      const kgAt = (bmiV) => Nutrition.kgForBmi(bmiV, h); // weight where each band starts (rounded up, 1.24.0)
       const targetBmi = s.profile.targetBmi || 24.9;
-      const targetKg = kgAt(targetBmi);
+      const targetKg = Math.round(targetBmi * m2 * 10) / 10;
       const msg = bmiTargetMessage(kg, s.profile);
       const marks = [[18.5, 'edge'], [22, 'mid'], [25, 'edge'], [30, 'edge'], [40, 'end']];
       $('#bmiCard').innerHTML = `

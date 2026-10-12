@@ -96,16 +96,25 @@
   }
 
   /* ---------- Healthy weight ---------- */
+  // Weight at which a BMI band starts, to 0.1 kg (1.24.0): rounded UP, so the shown weight really is in the new band
+  // (168 cm: obese from 84.7 kg; 84.6 kg is BMI 29.97 = overweight).
+  function kgForBmi(bmiValue, heightCm) {
+    if (!heightCm) return null;
+    return Math.ceil(Math.round(bmiValue * (heightCm / 100) ** 2 * 1e6) / 1e5) / 10;
+  }
+  // Healthy range (BMI 18.5 up to, not including, 25): heaviest healthy weight is the 0.1 kg just below the 25 line.
   function healthyWeightRange(heightCm) {
     if (!heightCm) return null;
     const m2 = (heightCm / 100) ** 2;
-    return { min: round(18.5 * m2, 1), max: round(24.9 * m2, 1), mid: round(22 * m2, 1) };
+    return { min: kgForBmi(18.5, heightCm), max: round(kgForBmi(25, heightCm) - 0.1, 1), mid: round(22 * m2, 1) };
   }
 
+  // BMI to one decimal place. 1.24.0 FIX: cut off (not rounded), so the number shown always matches the category.
+  // Before, 84.6 kg at 168 cm = 29.97 was rounded to 30.0 and labelled "Obese" although it is overweight.
   function bmi(weightKg, heightCm) {
     if (!weightKg || !heightCm) return null;
     const m = heightCm / 100;
-    return round(weightKg / (m * m), 1);
+    return Math.floor(Math.round((weightKg / (m * m)) * 1e6) / 1e5) / 10; // the 1e6 step removes floating-point dust (e.g. 24.999999…)
   }
 
   function bmiCategory(v) {
@@ -459,5 +468,5 @@
     return dateKey(dt);
   }
 
-  return { BURN_RULES, realBurn, burnSuggestion, daysBetween, ACTIVITY, GOALS, PRESETS, macrosFor, splitOf, kcalOfMacros, rebalance, healthyWeightRange, KCAL_PER_KG, smoothedWeight, averageIntake, projectWeight, daysToTarget, durationLabel, bmr, calcTargets, bmi, bmiCategory, scale, scaleExact, sum, fromOFF, parseCofidRows, parseLabelText, dateKey, addDays, round, num };
+  return { BURN_RULES, realBurn, burnSuggestion, daysBetween, ACTIVITY, GOALS, PRESETS, macrosFor, splitOf, kcalOfMacros, rebalance, healthyWeightRange, kgForBmi, KCAL_PER_KG, smoothedWeight, averageIntake, projectWeight, daysToTarget, durationLabel, bmr, calcTargets, bmi, bmiCategory, scale, scaleExact, sum, fromOFF, parseCofidRows, parseLabelText, dateKey, addDays, round, num };
 });

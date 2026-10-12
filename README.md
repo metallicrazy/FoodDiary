@@ -1,6 +1,6 @@
 # FoodDiary
 
-**Current version: 1.23.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
+**Current version: 1.24.0** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
 
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
@@ -16,8 +16,7 @@ A clean, modern food diary & calorie tracker that runs as a web app on iPhone an
 - **Real daily burn** (Progress): once you've logged food on 14 days and weighed in across 2 weeks, the app works out how many calories your body *actually* burns a day from your own data, and shows it next to your average intake and average deficit. If your target is too high for your goal it offers a lower one (Apply / Not now) and it never suggests eating more.
 - **Quick add** (Add page): log calories – and macros if you know them – without looking up a food. Handy for meals out.
 - **Spelling-tolerant search**: "brocoli", "chiken breast" or "yoghurt" still find the right UK foods.
-- **Monday check-in**: a summary of last week at the top of Today (average calories, days logged, days on target, weight change, real burn). Tap Done to put it away.
-- **Backup reminder**: Today reminds you if your last backup is over a week old, and the app keeps an automatic weekly copy on the phone (Me → Backup).
+- **Backup reminder**: Today (under the calorie summary) reminds you if your last backup is over a week old, and the app keeps an automatic weekly copy on the phone (Me → Backup).
 - **BMI & target weight**: colour-coded BMI scale with the matching weights for your height along the top, a settable target BMI (default 24.9) and how many kg to lose to reach it.
 - **Progress charts**: weekly calories vs target, macros, body weight trend with a **30-day forecast** (plan intake vs avg intake), and BMI.
 - **Private by design** — everything stays on your phone. One-tap backup file you can save to OneDrive; restore on a new device.
