@@ -10,7 +10,7 @@ const UI = (() => {
   const DF = {};
   const fmtDateOpts = (date, opts) => { const k = JSON.stringify(opts); return (DF[k] || (DF[k] = new Intl.DateTimeFormat('en-GB', opts))).format(date); };
 
-  const APP_VERSION = '1.26.0';
+  const APP_VERSION = '1.27.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -903,8 +903,9 @@ const UI = (() => {
       <div class="form-grid">
         <label class="span2">Recipe name<input type="text" id="rName" value="${esc(r.name)}" placeholder="e.g. Chicken curry"></label>
         <label>Servings<input type="number" id="rServings" inputmode="numeric" min="1" value="${r.servings}"></label>
-        <label>Cooked weight (g)<input type="number" id="rTotal" inputmode="decimal" placeholder="auto" value="${r.totalG ?? ''}"></label>
+        <label>Cooked weight (g)<input type="number" id="rTotal" inputmode="decimal" placeholder="auto" value=""></label>
       </div>
+      <div id="rTotalNote"></div>
       <div class="cat-row">
         <label for="rCat">Category</label>
         <div class="cat-controls">
@@ -1019,22 +1020,61 @@ const UI = (() => {
     const drawList = () => {
       $('#rIngredients').innerHTML = r.ingredients.map((ing, i) => `<div class="ingredient"><span class="name">${esc(ing.food.name)}</span><input type="number" data-i="${i}" value="${ing.grams}" inputmode="decimal"><span class="muted small">g</span><button class="x" data-del="${i}">✕</button></div>`).join('') || '<p class="muted small">No ingredients yet.</p>';
     };
+    // Cooked weight (1.27.0). AUTO = follows the ingredient total. TYPED = the weight the user entered (e.g. after
+    // weighing the pot); when ingredients change it is scaled to keep the same cooking loss:
+    //   cooked = typedTotalG × (ingredient total now ÷ cookBase), cookBase = ingredient total when it was typed.
+    // Recipes saved before 1.27.0 have no flag: if their saved weight equals the ingredient total it was automatic.
+    const rawSum = () => r.ingredients.reduce((a, x) => a + (x.grams || 0), 0);
+    if (r.totalAuto === undefined) {
+      const s0 = rawSum();
+      if (!r.totalG || Math.abs(r.totalG - s0) < 0.5) r.totalAuto = true;
+      else { r.totalAuto = false; r.typedTotalG = r.totalG; r.cookBase = s0; }
+    }
+    const cookedNow = () => {
+      const sum = rawSum();
+      if (r.totalAuto) return sum;
+      if (!r.cookBase || !sum) return r.typedTotalG; // typed before any ingredients – nothing to scale from yet
+      if (Math.abs(sum - r.cookBase) < 0.001) return r.typedTotalG;
+      return Math.max(1, Math.round((r.typedTotalG * sum) / r.cookBase));
+    };
+    const drawCooked = () => {
+      const sum = rawSum(), box = $('#rTotal'), note = $('#rTotalNote');
+      r.totalG = r.ingredients.length ? cookedNow() : (r.totalAuto ? null : r.typedTotalG);
+      box.placeholder = sum ? `auto (${fmt(sum)})` : 'auto';
+      if (document.activeElement !== box) box.value = r.totalAuto ? '' : String(r.totalG ?? '');
+      const scaled = !r.totalAuto && r.cookBase && sum && Math.abs(sum - r.cookBase) >= 0.001;
+      const html = scaled
+        ? `<p class="small muted cooked-note">Ingredients changed, so the cooked weight was adjusted from ${fmt(r.typedTotalG)} g to ${fmt(r.totalG)} g to keep the same cooking loss (${fmt(Math.round((r.typedTotalG / r.cookBase) * 100))}% of the ingredient weight). Weigh it again and type the new weight, or <button class="link-btn inline" id="rUseAuto" type="button">use the ingredient total</button>.</p>`
+        : '';
+      if (note.innerHTML !== html) note.innerHTML = html;
+    };
     const drawTotals = () => {
-      const sumG = r.ingredients.reduce((a, x) => a + (x.grams || 0), 0);
+      drawCooked();
+      const sumG = rawSum();
       const tot = Nutrition.sum(r.ingredients.map((x) => Nutrition.scale(x.food, x.grams)));
       const servings = Math.max(1, parseInt($('#rServings').value, 10) || 1);
-      const totalG = parseFloat($('#rTotal').value) || sumG;
+      const totalG = r.totalG || sumG;
       $('#rTotals').innerHTML = `<div><b>${fmt(tot.kcal)}</b><small>kcal total</small></div><div><b>${fmt(tot.protein)}</b><small>protein g</small></div><div><b>${fmt(tot.carbs)}</b><small>carbs g</small></div><div><b>${fmt(tot.fat)}</b><small>fat g</small></div>`;
       $('#rPer').textContent = sumG ? `${fmt(totalG)} g total → ${fmt(tot.kcal / servings)} kcal per serving (${fmt(totalG / servings)} g). Per 100 g: ${fmt((tot.kcal / totalG) * 100)} kcal.` : '';
-      $('#rTotal').placeholder = sumG ? `auto (${fmt(sumG)})` : 'auto';
     };
 
     const draw = () => { drawList(); drawTotals(); };
     draw();
     $('#rIngredients').addEventListener('input', (e) => { const i = e.target.dataset.i; if (i !== undefined) { r.ingredients[i].grams = parseFloat(e.target.value) || 0; drawTotals(); } });
     $('#rIngredients').addEventListener('click', (e) => { const d = e.target.closest('[data-del]'); if (d) { r.ingredients.splice(+d.dataset.del, 1); draw(); } });
-    $('#rServings').addEventListener('input', drawTotals); $('#rTotal').addEventListener('input', drawTotals);
-    const snapshot = () => Object.assign(r, { name: $('#rName').value, servings: parseInt($('#rServings').value, 10) || r.servings, totalG: parseFloat($('#rTotal').value) || null });
+    $('#rServings').addEventListener('input', drawTotals);
+    $('#rTotal').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      if (v > 0) { r.totalAuto = false; r.typedTotalG = v; r.cookBase = rawSum(); }
+      else { r.totalAuto = true; delete r.typedTotalG; delete r.cookBase; }
+      drawTotals();
+    });
+    $('#rTotalNote').addEventListener('click', (e) => {
+      if (!e.target.closest('#rUseAuto')) return;
+      r.totalAuto = true; delete r.typedTotalG; delete r.cookBase;
+      drawTotals(); autosave(); toast('Cooked weight now follows the ingredients');
+    });
+    const snapshot = () => Object.assign(r, { name: $('#rName').value, servings: parseInt($('#rServings').value, 10) || r.servings });
     // Auto-save the work in progress so an accidental close (tap outside, swipe back) never loses it.
     const autosave = () => { snapshot(); if (recipeIsDirty(r)) Store.saveDraft(r); else if (Store.state.recipeDraft && (Store.state.recipeDraft.id || null) === (r.id || null)) Store.clearDraft(); };
     $('#rName').addEventListener('input', autosave);
@@ -1047,12 +1087,14 @@ const UI = (() => {
     $('#rSave').addEventListener('click', () => {
       const name = $('#rName').value.trim(); if (!name) return toast('Name the recipe');
       if (!r.ingredients.length) return toast('Add at least one ingredient');
-      const sumG = r.ingredients.reduce((a, x) => a + (x.grams || 0), 0);
-      const totalG = parseFloat($('#rTotal').value) || sumG;
+      const sumG = rawSum();
+      if (!r.totalAuto && !r.cookBase) r.cookBase = sumG; // typed before the ingredients: scale from here on
+      const totalG = (r.totalAuto ? sumG : cookedNow()) || sumG;
       const servings = Math.max(1, parseInt($('#rServings').value, 10) || 1);
       const tot = Nutrition.sum(r.ingredients.map((x) => Nutrition.scaleExact(x.food, x.grams)));
       const per100 = { kcal: Math.round((tot.kcal / totalG) * 100), protein: +((tot.protein / totalG) * 100).toFixed(1), carbs: +((tot.carbs / totalG) * 100).toFixed(1), fat: +((tot.fat / totalG) * 100).toFixed(1) };
-      const saved = Store.saveRecipe({ id: r.id, name, servings, totalG, ingredients: r.ingredients, per100, servingG: Math.round(totalG / servings), servingLabel: '1 serving', image: r.image, categoryId: Store.recipeCategory(r.categoryId) ? r.categoryId : undefined });
+      const cooked = r.totalAuto ? { totalAuto: true } : { totalAuto: false, typedTotalG: totalG, cookBase: sumG }; // the scaled weight becomes the new starting point
+      const saved = Store.saveRecipe({ id: r.id, name, servings, totalG, ...cooked, ingredients: r.ingredients, per100, servingG: Math.round(totalG / servings), servingLabel: '1 serving', image: r.image, categoryId: Store.recipeCategory(r.categoryId) ? r.categoryId : undefined });
       Store.clearDraft();
       closeSheet(); toast('Recipe saved'); addTab = 'recipes';
       if (recipeFilterSel && recipeFilterSel !== (saved.categoryId || 'none')) recipeFilterSel = null; // don't hide the recipe just saved
