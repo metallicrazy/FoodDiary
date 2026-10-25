@@ -66,6 +66,14 @@
         </div>
       </section>
 
+      <section class="card water hidden" id="waterCard" aria-label="Water">
+        <div class="water-row">
+          <button class="water-btn minus" id="waterMinus" type="button" aria-label="Remove 250 ml of water">−</button>
+          <span class="water-step">250ml</span>
+          <button class="water-btn plus" id="waterPlus" type="button" aria-label="Add 250 ml of water">+</button>
+          <output class="water-total" id="waterTotal" aria-live="polite"><span class="water-drop"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 2.7c-.3 0-.6.2-.8.4C9.6 5.2 5.5 10.4 5.5 14a6.5 6.5 0 0 0 13 0c0-3.6-4.1-8.8-5.7-10.9-.2-.2-.5-.4-.8-.4z" fill="currentColor"/></svg></span><b id="waterMl">0</b><small>ml</small></output>
+        </div>
+      </section>
       <div id="todayNotes"></div>
       <section class="section">
         <div class="section-head">
@@ -161,6 +169,11 @@
           <span><i style="background:var(--fat)"></i>Fat</span>
         </div>
       </section>
+      <section class="card hidden" id="waterSection">
+        <div class="card-head"><h3>Water this week</h3><span class="muted small" id="waterWeekLabel"></span></div>
+        <div class="chart-wrap"><canvas id="waterChart"></canvas></div>
+        <div class="kpis" id="waterKpis"></div>
+      </section>
     </main>
 
     <!-- ================= ME ================= -->
@@ -213,6 +226,13 @@
           <p>If GOV.UK publishes an updated <a href="https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid" target="_blank" rel="noopener">CoFID spreadsheet</a>, you can import it here to replace the built-in copy on this device.</p>
           <label class="btn ghost file-btn">Import CoFID spreadsheet<input type="file" id="cofidFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label>
         </details>
+      </section>
+      <section class="card">
+        <h3>Optional features</h3>
+        <div class="setting-row">
+          <div><strong>Water tracker</strong><br><small class="muted">Adds ＋/− 250 ml buttons on Today and a weekly water graph on Progress.</small></div>
+          <label class="switch"><input type="checkbox" id="waterToggle" aria-label="Water tracker"><span></span></label>
+        </div>
       </section>
       <section class="card">
         <h3>Backup</h3>

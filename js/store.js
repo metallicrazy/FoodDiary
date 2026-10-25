@@ -27,6 +27,8 @@ const Store = (() => {
     lastBackupAt: null,      // ISO time of the last 'Back up to file' that completed (1.23.0)
     backupSnoozeUntil: null, // dateKey — ✕ on the Today backup reminder hides it until then (1.23.0)
     picks: {},          // normalised search text -> food the user added for it last time (1.18.0)
+    waterEnabled: false,     // optional water tracker; OFF for everyone until switched on in Me (1.28.0)
+    water: {},               // dateKey -> ml drunk that day (1.28.0)
     recipeCategories: [],    // [{ id, name }] user-made recipe categories, kept in A–Z order (1.25.0)
     recipeFilter: null,      // category id the Recipes tab opens on; null = All recipes (1.25.0)
     onboarded: false
@@ -40,6 +42,8 @@ const Store = (() => {
     merged.targets = Object.assign(defaults().targets, parsed.targets || {});
     merged.profile = Object.assign(defaults().profile, parsed.profile || {});
     // Recipe categories (1.25.0): tidy up anything that points at a category that no longer exists.
+    if (!merged.water || typeof merged.water !== 'object' || Array.isArray(merged.water)) merged.water = {};
+    merged.waterEnabled = merged.waterEnabled === true; // only ever on if the user switched it on
     if (!Array.isArray(merged.recipeCategories)) merged.recipeCategories = [];
     const catIds = new Set(merged.recipeCategories.map((c) => c.id));
     for (const r of merged.recipes || []) if (r.categoryId && !catIds.has(r.categoryId)) delete r.categoryId;
@@ -330,6 +334,16 @@ const Store = (() => {
     save();
     return n;
   }
+  /* ---- Water (1.28.0): ml per day, in 250 ml steps, never below 0. ---- */
+  const WATER_STEP = 250;
+  const waterFor = (dateKey) => (state.water && state.water[dateKey]) || 0;
+  function addWater(dateKey, ml) {
+    if (!state.water) state.water = {};
+    const next = Math.max(0, Math.min(20000, waterFor(dateKey) + ml));
+    if (next) state.water[dateKey] = next; else delete state.water[dateKey];
+    save();
+    return next;
+  }
   const recipeCategory = (id) => (id && state.recipeCategories.find((c) => c.id === id)) || null;
 
   /* ---- Weight ---- */
@@ -429,7 +443,7 @@ const Store = (() => {
     get state() { return state; }, save, kvGet, kvSet,
     entries, addEntry, updateEntry, removeEntry,
     pushRecent, toggleFavourite, isFavourite, slimFood,
-    saveCustomFood, deleteCustomFood, saveRecipe, deleteRecipe, addRecipeCategory, renameRecipeCategory, deleteRecipeCategory, recipeCategory,
+    saveCustomFood, deleteCustomFood, saveRecipe, deleteRecipe, addRecipeCategory, renameRecipeCategory, deleteRecipeCategory, recipeCategory, WATER_STEP, waterFor, addWater,
     logWeight, setStartWeight, latestWeight, exportJSON, saveDraft, clearDraft, pickKey, rememberPick, pickFor, importJSON, reset, uid,
     upgrade, loadPhotos, photoSrc, putPhoto, counts, safetyCopy, weeklyCopy, protectStorage, storageProtected, flush, DATA_VERSION
   };

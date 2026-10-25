@@ -10,7 +10,7 @@ const UI = (() => {
   const DF = {};
   const fmtDateOpts = (date, opts) => { const k = JSON.stringify(opts); return (DF[k] || (DF[k] = new Intl.DateTimeFormat('en-GB', opts))).format(date); };
 
-  const APP_VERSION = '1.27.0';
+  const APP_VERSION = '1.28.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -159,6 +159,7 @@ const UI = (() => {
 
   function renderToday() {
     renderJourney();
+    renderWater();
     renderTodayNotes();
     const s = Store.state;
     $('#dateLabel').textContent = dateLabel(currentDate);
@@ -231,6 +232,20 @@ const UI = (() => {
     if (b.dataset.act === 'backupLater') { s.backupSnoozeUntil = Nutrition.addDays(today, 3); Store.save(); renderTodayNotes(); toast('OK – I’ll remind you in 3 days'); }
     else if (b.dataset.act === 'backupNow') await doBackup();
   });
+
+  /* ---- Water tracker (1.28.0): optional, off by default (Me → Optional features). Follows the day being viewed. ---- */
+  function renderWater() {
+    const on = Store.state.waterEnabled === true;
+    $('#waterCard').classList.toggle('hidden', !on);
+    if (!on) return;
+    const ml = Store.waterFor(currentDate);
+    $('#waterMl').textContent = fmt(ml);
+    $('#waterMinus').disabled = ml <= 0;
+    $('#waterTotal').setAttribute('aria-label', `${fmt(ml)} ml of water ${dateLabel(currentDate).toLowerCase() === 'today' ? 'today' : 'on ' + fullDate(currentDate)}`);
+  }
+  const waterTap = (dir) => () => { Store.addWater(currentDate, dir * Store.WATER_STEP); renderWater(); };
+  $('#waterPlus').addEventListener('click', waterTap(1));
+  $('#waterMinus').addEventListener('click', waterTap(-1));
 
   const TRASH = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
   function thumbHTML(food, cls = '') {
@@ -1379,7 +1394,27 @@ const UI = (() => {
       ] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt(c.raw)} g (target ${fmt(T[c.dataset.label.toLowerCase()])} g)` } } }, scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true, ticks: { maxTicksLimit: 5, callback: (v) => v + ' g' } } } }
     }, [T.protein, T.carbs, T.fat]);
+    renderWaterWeek(keys, labels, col);
     renderWeight(col);
+  }
+  // Weekly water graph (1.28.0) – only when the water tracker is switched on. Same week as the calorie card.
+  function renderWaterWeek(keys, labels, col) {
+    const on = Store.state.waterEnabled === true;
+    $('#waterSection').classList.toggle('hidden', !on);
+    if (!on) return;
+    const ml = keys.map((k) => Store.waterFor(k));
+    const todayKey = Nutrition.dateKey(new Date());
+    const counted = keys.filter((k, i) => k <= todayKey && ml[i] > 0);
+    const total = ml.reduce((a, v) => a + v, 0);
+    const avg = counted.length ? Math.round(total / counted.length / 10) * 10 : 0;
+    $('#waterWeekLabel').textContent = $('#weekLabel').textContent;
+    $('#waterKpis').innerHTML = `<div class="kpi"><b>${avg ? fmt(avg) : '–'}</b><small>avg ml / day</small></div><div class="kpi"><b>${total ? fmt(total / 1000, 2) : '–'}</b><small>litres this week</small></div><div class="kpi"><b>${counted.length}</b><small>days logged</small></div>`;
+    draw('waterChart', {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Water', data: ml, backgroundColor: col('--water'), borderRadius: 8, borderSkipped: false, maxBarThickness: 34 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${fmt(c.raw)} ml` } } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, suggestedMax: 2000, grid: { color: col('--line') }, ticks: { maxTicksLimit: 5, callback: (v) => (v >= 1000 ? fmt(v / 1000, 1) + ' L' : v + ' ml') } } } }
+    });
   }
   // Real daily burn (1.22.0): measured from the owner's own food log + weight trend. Only ever suggests a LOWER
   // calorie target (owner's rule), and only as a suggestion with Apply / Not now.
@@ -1635,6 +1670,7 @@ const UI = (() => {
       if (!confirm(`Correct your starting weight? This changes your first reading (${fmt(p.startWeightKg, 1)} kg on ${fmtDate(p.startDate)}).`)) return;
       $('#pWeight').disabled = false; $('#pWeight').focus(); $('#pWeight').select();
     });
+    $('#waterToggle').checked = s.waterEnabled === true;
     $('#tAuto').checked = T.auto;
     $('#pActivity').closest('label').classList.toggle('hidden', !T.auto);
     $('#pGoal').closest('label').classList.toggle('hidden', !T.auto);
@@ -1680,6 +1716,11 @@ const UI = (() => {
     Object.assign(T, m); Store.save();
   }
   ['#pSex', '#pAge', '#pHeight', '#pWeight', '#pActivity', '#pGoal'].forEach((id) => $(id).addEventListener('change', readProfile));
+  $('#waterToggle').addEventListener('change', (e) => {
+    Store.state.waterEnabled = e.target.checked; Store.save();
+    renderWater();
+    showSaved(e.target.checked ? 'Water tracker on – see Today and Progress' : 'Water tracker off (your water history is kept)');
+  });
   $('#tAuto').addEventListener('change', (e) => {
     Store.state.targets.auto = e.target.checked;
     if (e.target.checked) recalcTargets(); else Store.save();

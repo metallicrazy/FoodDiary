@@ -13,6 +13,7 @@
   --carbs: #f59e0b;
   --fat: #ec4899;
   --danger: #ef4444;
+  --water: #38bdf8;
   --shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 8px 24px -12px rgba(15, 23, 42, .18);
   --radius: 18px;
   --tab-h: 64px;
@@ -497,3 +498,18 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 /* Cooked weight note in the recipe editor (1.27.0) */
 .cooked-note { margin: 6px 2px 0; }
 .cooked-note .link-btn.inline { padding: 0; font-size: inherit; }
+
+/* Water tracker (1.28.0) — optional, off by default. Buttons are the size of the list thumbnails (48 px). */
+.card.water { padding: 10px 14px; }
+.water-row { display: flex; align-items: center; gap: 10px; }
+.water-btn { width: 48px; height: 48px; flex: none; border-radius: 12px; font-size: 26px; font-weight: 700; line-height: 1; display: flex; align-items: center; justify-content: center; touch-action: manipulation; -webkit-user-select: none; user-select: none; transition: transform .08s; }
+.water-btn:active { transform: scale(.94); }
+.water-btn.minus { background: #fee2e2; color: #b91c1c; }
+.water-btn.plus { background: var(--accent-soft); color: var(--accent); }
+.water-btn:disabled { opacity: .4; }
+.water-step { font-size: 14px; font-weight: 700; color: var(--muted); min-width: 52px; text-align: center; }
+.water-total { margin-left: auto; display: flex; align-items: baseline; gap: 4px; background: var(--card-2); border-radius: 12px; padding: 10px 12px; min-width: 104px; justify-content: flex-end; }
+.water-total b { font-size: 20px; letter-spacing: -.02em; }
+.water-total small { color: var(--muted); font-weight: 600; }
+.water-drop { color: var(--water); align-self: center; margin-right: auto; display: flex; }
+@media (prefers-color-scheme: dark) { .water-btn.minus { background: #3b1414; color: #f87171; } }
