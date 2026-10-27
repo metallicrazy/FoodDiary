@@ -10,7 +10,7 @@ const UI = (() => {
   const DF = {};
   const fmtDateOpts = (date, opts) => { const k = JSON.stringify(opts); return (DF[k] || (DF[k] = new Intl.DateTimeFormat('en-GB', opts))).format(date); };
 
-  const APP_VERSION = '1.28.0';
+  const APP_VERSION = '1.29.1';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -286,24 +286,97 @@ const UI = (() => {
     const src = Nutrition.addDays(currentDate, -1);
     const y = Store.entries(src);
     logWithDayGuard((dk) => {
-      y.forEach((e) => Store.addEntry(dk, { quick: e.quick || undefined, food: e.food, grams: e.grams, qty: e.qty, sizeG: e.sizeG, unit: e.unit, unitPlural: e.unitPlural, liquid: e.liquid, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat }));
+      y.forEach((e) => Store.addEntry(dk, entryCopy(e)));
       toast(`Copied ${y.length} item${y.length === 1 ? '' : 's'} to ${dateLabel(dk).toLowerCase()}`); currentDate = dk; renderToday();
     });
   });
   $('#dismissInstall').addEventListener('click', () => { localStorage.setItem('fooddiary.installDismissed', '1'); renderToday(); });
+  function openEntry(entry) { if (entry.quick) openQuickAdd(entry); else openFoodSheet(entry.food, { entry }); }
   $('#entryList').addEventListener('click', (e) => {
     const b = e.target.closest('[data-entry]');
     if (!b) return;
+    if (lpFired) { lpFired = false; e.preventDefault(); return; } // the tap that ended a long press
     const entry = Store.entries(currentDate).find((x) => x.id === b.dataset.entry);
-    if (entry) { if (entry.quick) openQuickAdd(entry); else openFoodSheet(entry.food, { entry }); }
+    if (entry) openEntry(entry);
   });
-  // Swipe between days
-  let tx = null;
-  $('#view-today').addEventListener('touchstart', (e) => { tx = e.touches[0].clientX; }, { passive: true });
-  $('#view-today').addEventListener('touchend', (e) => {
-    if (tx === null) return; const dx = e.changedTouches[0].clientX - tx; tx = null;
-    if (Math.abs(dx) > 90) { currentDate = Nutrition.addDays(currentDate, dx < 0 ? 1 : -1); renderToday(); }
+
+  /* ---- Copy to today (1.29.0): reuse an item logged on another day. Long press a row, or the button in its panel.
+     Never offered while viewing today. Adds a new entry for today (same food snapshot and amount); the original stays. ---- */
+  // A diary entry minus its id/time, with its own copy of the food snapshot (so the two entries never share an object).
+  function entryCopy(e, amounts) {
+    const a = amounts || e;
+    return { quick: e.quick || undefined, food: { ...e.food }, grams: a.grams, qty: a.qty, sizeG: a.sizeG, unit: a.unit, unitPlural: a.unitPlural, liquid: a.liquid, kcal: a.kcal, protein: a.protein, carbs: a.carbs, fat: a.fat };
+  }
+  const isViewingToday = () => currentDate === Nutrition.dateKey(new Date());
+  function copyToToday(e, amounts) {
+    const x = Store.addEntry(Nutrition.dateKey(new Date()), entryCopy(e, amounts));
+    toast(`Copied to today ✓ ${e.food.name} · ${fmt(x.kcal)} kcal`);
+  }
+  const COPY_BTN = '<button class="btn outline block copy-today" id="copyToday" type="button">⧉ Copy to today</button>';
+  function openEntryMenu(entry) {
+    backdropGuardUntil = Date.now() + 600; // the finger lifting off must not close the menu it just opened
+    openSheet(`
+      <div class="sheet-title"><h2>${esc(entry.food.name)}</h2></div>
+      <p class="muted" style="margin-top:0">${esc(amountLabel(entry))} · ${fmt(entry.kcal)} kcal · ${esc(dateLabel(currentDate))}</p>
+      <div class="day-guard">
+        <button class="btn primary block" id="lmCopy">⧉ Copy to today</button>
+        <button class="btn block" id="lmOpen">Open</button>
+        <button class="btn ghost block" id="lmCancel">Cancel</button>
+      </div>`);
+    $('#lmCopy').addEventListener('click', () => { closeSheet(); copyToToday(entry); });
+    $('#lmOpen').addEventListener('click', () => openEntry(entry));
+    $('#lmCancel').addEventListener('click', () => closeSheet());
+  }
+  // Long press: pointer events work the same on iPhone Safari and Android Chrome. 500 ms still, finger moving
+  // more than 10 px (scrolling, swiping to another day) cancels it. One timer, no work while the finger is down.
+  let lpTimer = null, lpStart = null, lpRow = null, lpFired = false, backdropGuardUntil = 0;
+  const lpCancel = () => { clearTimeout(lpTimer); lpTimer = null; if (lpRow) lpRow.classList.remove('pressing'); lpRow = null; };
+  $('#entryList').addEventListener('pointerdown', (e) => {
+    lpFired = false; lpCancel();
+    if (e.button > 0 || e.isPrimary === false) return;
+    const b = e.target.closest('[data-entry]');
+    if (!b || isViewingToday()) return;
+    lpStart = { x: e.clientX, y: e.clientY }; lpRow = b; b.classList.add('pressing');
+    lpTimer = setTimeout(() => {
+      const entry = Store.entries(currentDate).find((x) => x.id === b.dataset.entry);
+      lpCancel(); if (!entry) return;
+      lpFired = true;
+      if (navigator.vibrate) try { navigator.vibrate(15); } catch (_) {} // Android only; iPhone has no web vibration
+      openEntryMenu(entry);
+    }, 500);
+  });
+  $('#entryList').addEventListener('pointermove', (e) => {
+    if (lpTimer && Math.hypot(e.clientX - lpStart.x, e.clientY - lpStart.y) > 10) lpCancel();
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => $('#entryList').addEventListener(t, lpCancel));
+  // Android Chrome's own long-press menu (and desktop right-click) would cover ours.
+  $('#entryList').addEventListener('contextmenu', (e) => { if (e.target.closest('[data-entry]') && !isViewingToday()) e.preventDefault(); });
+  // Swipe between days — must be a deliberate sideways swipe (1.29.1, owner: scrolling up with a slightly diagonal thumb
+  // kept changing the day). Rules: one finger; the first 12 px of movement decide the direction and anything not clearly
+  // sideways (more than ~27° off horizontal) is treated as a scroll for the rest of that touch; then at least 110 px
+  // sideways, at most 45 px up/down overall, sideways ≥ 3 × up/down, within 800 ms; not after a long press; not if the
+  // page scrolled. Passive listeners, a few numbers per touch – no effect on scrolling speed on iPhone or Android.
+  let sw = null;
+  const scrollPos = () => window.scrollY || document.documentElement.scrollTop || 0;
+  $('#view-today').addEventListener('touchstart', (e) => {
+    sw = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now(), sy: scrollPos(), dir: null } : null;
   }, { passive: true });
+  $('#view-today').addEventListener('touchmove', (e) => {
+    if (!sw) return;
+    if (e.touches.length !== 1) { sw = null; return; }
+    if (sw.dir) return;
+    const dx = Math.abs(e.touches[0].clientX - sw.x), dy = Math.abs(e.touches[0].clientY - sw.y);
+    if (dx < 12 && dy < 12) return;
+    sw.dir = dx > dy * 2 ? 'x' : 'y';
+  }, { passive: true });
+  $('#view-today').addEventListener('touchend', (e) => {
+    const s0 = sw; sw = null;
+    if (!s0 || s0.dir === 'y' || lpFired) return;
+    const dx = e.changedTouches[0].clientX - s0.x, dy = Math.abs(e.changedTouches[0].clientY - s0.y);
+    if (Math.abs(dx) < 110 || dy > 45 || Math.abs(dx) < dy * 3 || Date.now() - s0.t > 800 || Math.abs(scrollPos() - s0.sy) > 4) return;
+    currentDate = Nutrition.addDays(currentDate, dx < 0 ? 1 : -1); renderToday();
+  }, { passive: true });
+  $('#view-today').addEventListener('touchcancel', () => { sw = null; }, { passive: true });
 
   /* ===================== FOOD SHEET ===================== */
   // Work out the "size" options for a food: a unit portion (egg, slice, can…) if known, else grams.
@@ -370,6 +443,7 @@ const UI = (() => {
         <tr><td>Protein</td><td>${fmt(food.protein, 1)} g</td></tr>
         ${food.salt != null ? `<tr><td>Salt</td><td>${fmt(food.salt, 2)} g</td></tr>` : ''}
       </table>
+      ${isEdit && !onAdd && !isViewingToday() ? COPY_BTN : ''}
       <div class="sheet-actions">
         ${onBack ? '<button class="btn" id="backBtn">← Back to results</button>' : ''}
         ${isEdit ? '<button class="btn danger" id="deleteEntry">Delete</button>' : ''}
@@ -416,6 +490,8 @@ const UI = (() => {
     }));
     if (onBack) $('#backBtn').addEventListener('click', () => onBack());
     if (isEdit) $('#deleteEntry').addEventListener('click', () => { Store.removeEntry(currentDate, entry.id); closeSheet(); renderToday(); toast('Removed'); });
+    // Copies the amount shown (so it can be tweaked first); the entry on the viewed day is left as it was.
+    if ($('#copyToday')) $('#copyToday').addEventListener('click', () => { if (qty * sizeG <= 0) return toast('Enter an amount'); copyToToday(entry, buildEntry()); closeSheet(); });
     if ($('#shareBtn')) $('#shareBtn').addEventListener('click', () => { if (food.source === 'recipe') { const r = Store.state.recipes.find((x) => x.id === food.id); if (r) shareItem('recipe', r); } else shareItem('food', food); });
     if ($('#editCustom')) $('#editCustom').addEventListener('click', () => openCustomFoodSheet(food));
     if ($('#viewRecipe')) $('#viewRecipe').addEventListener('click', () => { const r = Store.state.recipes.find((x) => x.id === food.id); if (r) openRecipeView(r, () => openFoodSheet(food, { entry, onAdd, onBack, fromQuery })); });
@@ -451,6 +527,7 @@ const UI = (() => {
         <label>Name<input type="text" id="qaName" maxlength="60" placeholder="optional" value="${e && e.food.name !== 'Quick add' ? esc(e.food.name) : ''}"></label>
       </div>
       <p class="muted small" id="qaNote" style="min-height:1.2em"></p>
+      ${e && !isViewingToday() ? COPY_BTN : ''}
       <div class="sheet-actions">${e ? '<button class="btn danger" id="qaDelete">Delete</button>' : '<button class="btn" id="qaCancel">Cancel</button>'}<button class="btn primary" id="qaSave" disabled>${e ? 'Save' : 'Add'}</button></div>`);
     const num = (id) => { const x = parseFloat($(id).value); return Number.isFinite(x) && x >= 0 ? Math.round(x * 10) / 10 : 0; };
     const kcalOf = () => { const x = parseInt($('#qaKcal').value, 10); return Number.isFinite(x) && x > 0 && x <= 10000 ? x : 0; };
@@ -469,6 +546,7 @@ const UI = (() => {
     $('#qaClose').addEventListener('click', () => closeSheet());
     if ($('#qaCancel')) $('#qaCancel').addEventListener('click', () => closeSheet());
     if (e) $('#qaDelete').addEventListener('click', () => { Store.removeEntry(currentDate, e.id); closeSheet(); renderToday(); toast('Removed'); });
+    if ($('#copyToday')) $('#copyToday').addEventListener('click', () => { if (!kcalOf()) return toast('Enter the calories'); copyToToday(e, build()); closeSheet(); });
     $('#qaSave').addEventListener('click', () => {
       if (!kcalOf()) return;
       const x = build();
@@ -1811,7 +1889,7 @@ const UI = (() => {
   $('#resetBtn').addEventListener('click', async () => { if (confirm('Erase all diary entries, foods, photos and settings on this device?')) { await Store.reset(); renderMe(); renderToday(); toast('Erased'); } });
 
   /* ===================== Sheet backdrop / init ===================== */
-  $('.sheet-backdrop').addEventListener('click', () => closeSheet());
+  $('.sheet-backdrop').addEventListener('click', () => { if (Date.now() < backdropGuardUntil) return; closeSheet(); });
 
   /* ===================== Auto-update ===================== */
   let swReg = null, hadController = !!(navigator.serviceWorker && navigator.serviceWorker.controller), lastCheck = 0;

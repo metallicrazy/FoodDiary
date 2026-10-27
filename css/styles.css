@@ -513,3 +513,8 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 .water-total small { color: var(--muted); font-weight: 600; }
 .water-drop { color: var(--water); align-self: center; margin-right: auto; display: flex; }
 @media (prefers-color-scheme: dark) { .water-btn.minus { background: #3b1414; color: #f87171; } }
+
+/* Copy to today (1.29.0): long press on a past day's diary row */
+#entryList .item { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+#entryList .item.pressing { transform: scale(.98); background: var(--card-2); transition: transform .4s ease, background .4s ease; }
+.copy-today { margin-top: 8px; }
