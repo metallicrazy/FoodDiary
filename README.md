@@ -1,6 +1,6 @@
 # FoodDiary
 
-**Current version: 1.29.1** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
+**Current version: 1.30.1** — the version number is also shown at the bottom of the app's **Me** screen, and in `sw.js` (line 2) and `js/app.js` (`APP_VERSION`).
 
 A clean, modern food diary & calorie tracker that runs as a web app on iPhone and Android — no App Store, no developer account, no cost.
 
@@ -18,6 +18,7 @@ A clean, modern food diary & calorie tracker that runs as a web app on iPhone an
 - **Recipe categories**: give each recipe a category (Breakfast, Dinner, Batch cook…) in the recipe editor – tap ＋ to make a new one, ✎ to rename or delete. On the Recipes tab, a dropdown filters the list; tap ☆ next to it to make that filter the default.
 - **Quick add** (Add page, ⚡ Add button): log calories – and macros if you know them – without looking up a food. Handy for meals out.
 - **Copy to today**: on any earlier day, long-press an item in the food log (or open it and tap ⧉ Copy to today) to log it again today – handy for regular quick adds. The original day is left as it was.
+- **Long-press delete on today**: press and hold an item in today's food log and tap the red **Delete**. Tapped it by mistake? Tap **Undo** within 5 seconds to put it back exactly as it was.
 - **Spelling-tolerant search**: "brocoli", "chiken breast" or "yoghurt" still find the right UK foods.
 - **Backup reminder**: Today (under the calorie summary) reminds you if your last backup is over a week old, and the app keeps an automatic weekly copy on the phone (Me → Backup).
 - **BMI & target weight**: colour-coded BMI scale with the matching weights for your height along the top, a settable target BMI (default 24.9) and how many kg to lose to reach it.

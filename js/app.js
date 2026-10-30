@@ -10,7 +10,7 @@ const UI = (() => {
   const DF = {};
   const fmtDateOpts = (date, opts) => { const k = JSON.stringify(opts); return (DF[k] || (DF[k] = new Intl.DateTimeFormat('en-GB', opts))).format(date); };
 
-  const APP_VERSION = '1.29.1';
+  const APP_VERSION = '1.30.1';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -27,9 +27,19 @@ const UI = (() => {
 
   /* ===================== Toast / sheet ===================== */
   let toastTimer;
-  function toast(msg, ms = 2200) {
-    const t = $('#toast'); t.textContent = msg; t.classList.add('show');
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+  // Optional action button (1.30.0: Undo after a long-press delete). A new toast replaces the old one and its button.
+  function toast(msg, ms = 2200, action = null) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.classList.toggle('has-action', !!action);
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'toast-action'; b.textContent = action.label;
+      b.addEventListener('click', () => { clearTimeout(toastTimer); t.classList.remove('show', 'has-action'); action.run(); });
+      t.appendChild(b);
+    }
+    t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show', 'has-action'), ms);
   }
   let onSheetClose = null;
   function openSheet(html, { onClose } = {}) {
@@ -313,19 +323,37 @@ const UI = (() => {
     toast(`Copied to today ✓ ${e.food.name} · ${fmt(x.kcal)} kcal`);
   }
   const COPY_BTN = '<button class="btn outline block copy-today" id="copyToday" type="button">⧉ Copy to today</button>';
+  // Long-press menu. Earlier days: Copy to today (1.29.0). Today: red Delete with a 5-second Undo (1.30.0).
   function openEntryMenu(entry) {
     backdropGuardUntil = Date.now() + 600; // the finger lifting off must not close the menu it just opened
+    const onToday = isViewingToday();
     openSheet(`
       <div class="sheet-title"><h2>${esc(entry.food.name)}</h2></div>
       <p class="muted" style="margin-top:0">${esc(amountLabel(entry))} · ${fmt(entry.kcal)} kcal · ${esc(dateLabel(currentDate))}</p>
       <div class="day-guard">
-        <button class="btn primary block" id="lmCopy">⧉ Copy to today</button>
+        ${onToday ? '<button class="btn danger-solid block" id="lmDelete">🗑 Delete</button>' : '<button class="btn primary block" id="lmCopy">⧉ Copy to today</button>'}
         <button class="btn block" id="lmOpen">Open</button>
         <button class="btn ghost block" id="lmCancel">Cancel</button>
       </div>`);
-    $('#lmCopy').addEventListener('click', () => { closeSheet(); copyToToday(entry); });
+    if (onToday) $('#lmDelete').addEventListener('click', () => { closeSheet(); deleteWithUndo(currentDate, entry); });
+    else $('#lmCopy').addEventListener('click', () => { closeSheet(); copyToToday(entry); });
     $('#lmOpen').addEventListener('click', () => openEntry(entry));
     $('#lmCancel').addEventListener('click', () => closeSheet());
+  }
+  // Delete, then offer Undo for 5 s. Undo puts back the very same entry (same id, time, amount, macros) in the
+  // same place in the list, on the day it came from, without touching Recents.
+  function deleteWithUndo(dk, entry) {
+    const list = Store.entries(dk), idx = list.findIndex((x) => x.id === entry.id);
+    if (idx < 0) return;
+    const saved = JSON.parse(JSON.stringify(list[idx]));
+    Store.removeEntry(dk, entry.id); renderToday();
+    toast(`Deleted ${entry.food.name}`, 5000, { label: 'Undo', run: () => {
+      const d = Store.state.diary;
+      if (!d[dk]) d[dk] = [];
+      if (d[dk].some((x) => x.id === saved.id)) return;
+      d[dk].splice(Math.min(idx, d[dk].length), 0, saved);
+      Store.save(); renderToday(); toast('Put back ✓');
+    } });
   }
   // Long press: pointer events work the same on iPhone Safari and Android Chrome. 500 ms still, finger moving
   // more than 10 px (scrolling, swiping to another day) cancels it. One timer, no work while the finger is down.
@@ -335,7 +363,7 @@ const UI = (() => {
     lpFired = false; lpCancel();
     if (e.button > 0 || e.isPrimary === false) return;
     const b = e.target.closest('[data-entry]');
-    if (!b || isViewingToday()) return;
+    if (!b) return;
     lpStart = { x: e.clientX, y: e.clientY }; lpRow = b; b.classList.add('pressing');
     lpTimer = setTimeout(() => {
       const entry = Store.entries(currentDate).find((x) => x.id === b.dataset.entry);
@@ -350,7 +378,7 @@ const UI = (() => {
   });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => $('#entryList').addEventListener(t, lpCancel));
   // Android Chrome's own long-press menu (and desktop right-click) would cover ours.
-  $('#entryList').addEventListener('contextmenu', (e) => { if (e.target.closest('[data-entry]') && !isViewingToday()) e.preventDefault(); });
+  $('#entryList').addEventListener('contextmenu', (e) => { if (e.target.closest('[data-entry]')) e.preventDefault(); });
   // Swipe between days — must be a deliberate sideways swipe (1.29.1, owner: scrolling up with a slightly diagonal thumb
   // kept changing the day). Rules: one finger; the first 12 px of movement decide the direction and anything not clearly
   // sideways (more than ~27° off horizontal) is treated as a scroll for the rest of that touch; then at least 110 px

@@ -518,3 +518,10 @@ input.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px co
 #entryList .item { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
 #entryList .item.pressing { transform: scale(.98); background: var(--card-2); transition: transform .4s ease, background .4s ease; }
 .copy-today { margin-top: 8px; }
+
+/* Long-press Delete on today (1.30.0): solid red so it reads as destructive; Undo button inside the toast */
+.btn.danger-solid { background: #dc2626; color: #fff; }
+.toast.has-action { pointer-events: auto; display: flex; align-items: center; gap: 14px; padding: 6px 6px 6px 16px; }
+.toast-action { color: var(--accent); background: none; font-weight: 800; font-size: 15px; padding: 10px 12px; min-height: 44px; border-radius: 10px; touch-action: manipulation; }
+/* 1.30.1: in dark mode the toast is light grey, so the light accent green was unreadable (1.8:1) – darker green there (5:1) */
+@media (prefers-color-scheme: dark) { .toast-action { color: #047857; } }
