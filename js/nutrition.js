@@ -187,8 +187,33 @@
       satFat: num(n['saturated-fat_100g']),
       fibre: num(n.fiber_100g),
       salt: num(n.salt_100g),
+      alcohol: num(n.alcohol_100g),
+      polyols: num(n.polyols_100g),
       complete: kcal !== null && num(n.proteins_100g) !== null && num(n.carbohydrates_100g) !== null && num(n.fat_100g) !== null
     };
+  }
+
+  /* ---------- Sanity check for product data (1.31.0) ----------
+     Open Food Facts is typed in by volunteers. The commonest mistake is the kJ figure typed into the kcal box
+     (calories ~4.2× too high: 'Apples' listed at 199 kcal/100 g). Compares the listed kcal with what protein,
+     carbs, fat (+ fibre, alcohol, polyols) add up to. Returns null when it looks fine or can't be judged, else
+     { kind: 'kj' | 'mismatch' | 'impossible', listed, fromMacros, suggest } — suggest = kcal to offer (or null). */
+  const BOOZE = /\b(beer|lager|ale|stout|cider|wine|prosecco|champagne|vodka|gin|whisky|whiskey|rum|brandy|liqueur|spirit|sherry|port|alcopop)\b/i;
+  function checkFood(f) {
+    if (!f || f.source !== 'off') return null;
+    const k = f.kcal, P = f.protein, C = f.carbs, F = f.fat;
+    if (![k, P, C, F].every((x) => typeof x === 'number' && Number.isFinite(x) && x >= 0)) return null;
+    if (f.alcohol == null && BOOZE.test(f.name || '')) return null; // alcohol has its own calories we can't see
+    const pol = Math.min(f.polyols || 0, C);
+    const est = 4 * P + 4 * (C - pol) + 2.4 * pol + 9 * F + 2 * (f.fibre || 0) + 7 * (f.alcohol || 0);
+    const fromMacros = Math.round(est);
+    const out = (kind, suggest) => ({ kind, listed: k, fromMacros, suggest });
+    if (P + C + F > 105) return out('impossible', null);
+    if (k > 900) return out('impossible', fromMacros >= 1 ? fromMacros : null);
+    if (est < 20 && k < 60) return null; // drinks / near-zero foods: too small to judge
+    if (est > 0 && k / est >= 3.6 && k / est <= 4.9 && k - est > 40) return out('kj', Math.round(k / 4.184));
+    if (Math.abs(k - est) > Math.max(60, 0.35 * Math.max(k, est))) return out('mismatch', fromMacros >= 1 ? fromMacros : null);
+    return null;
   }
 
   function num(v) {
@@ -468,5 +493,5 @@
     return dateKey(dt);
   }
 
-  return { BURN_RULES, realBurn, burnSuggestion, daysBetween, ACTIVITY, GOALS, PRESETS, macrosFor, splitOf, kcalOfMacros, rebalance, healthyWeightRange, kgForBmi, KCAL_PER_KG, smoothedWeight, averageIntake, projectWeight, daysToTarget, durationLabel, bmr, calcTargets, bmi, bmiCategory, scale, scaleExact, sum, fromOFF, parseCofidRows, parseLabelText, dateKey, addDays, round, num };
+  return { BURN_RULES, realBurn, burnSuggestion, daysBetween, ACTIVITY, GOALS, PRESETS, macrosFor, splitOf, kcalOfMacros, rebalance, healthyWeightRange, kgForBmi, KCAL_PER_KG, smoothedWeight, averageIntake, projectWeight, daysToTarget, durationLabel, bmr, calcTargets, bmi, bmiCategory, scale, scaleExact, sum, fromOFF, checkFood, parseCofidRows, parseLabelText, dateKey, addDays, round, num };
 });

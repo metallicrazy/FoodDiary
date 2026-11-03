@@ -31,6 +31,7 @@ const Store = (() => {
     water: {},               // dateKey -> ml drunk that day (1.28.0)
     recipeCategories: [],    // [{ id, name }] user-made recipe categories, kept in A–Z order (1.25.0)
     recipeFilter: null,      // category id the Recipes tab opens on; null = All recipes (1.25.0)
+    productsOk: {},          // barcode -> true: 'They're right – keep as they are' on a product data warning (1.31.0)
     onboarded: false
   });
 
@@ -43,6 +44,7 @@ const Store = (() => {
     merged.profile = Object.assign(defaults().profile, parsed.profile || {});
     // Recipe categories (1.25.0): tidy up anything that points at a category that no longer exists.
     if (!merged.water || typeof merged.water !== 'object' || Array.isArray(merged.water)) merged.water = {};
+    if (!merged.productsOk || typeof merged.productsOk !== 'object' || Array.isArray(merged.productsOk)) merged.productsOk = {};
     merged.waterEnabled = merged.waterEnabled === true; // only ever on if the user switched it on
     if (!Array.isArray(merged.recipeCategories)) merged.recipeCategories = [];
     const catIds = new Set(merged.recipeCategories.map((c) => c.id));
@@ -187,6 +189,7 @@ const Store = (() => {
       weights: (s.weights || []).length, favourites: (s.favourites || []).length, recents: (s.recents || []).length, photoCopies: photos, uniquePhotos: ids.size };
   }
   const SAFETY_UPGRADE = 'safety:before-1.20', SAFETY_RESTORE = 'safety:before-restore';
+  const SAFETY_FIX = 'safety:before-correction'; // 1.31.0: taken before a product correction updates earlier entries
   // Automatic weekly copy on the phone (1.23.0): taken on the first launch at least 7 days after the last one; the
   // previous week's copy is kept too, so a problem noticed a few days late can still be undone. ~2 × the diary size.
   const SAFETY_WEEKLY = 'safety:weekly', SAFETY_WEEKLY_PREV = 'safety:weekly-prev';
@@ -271,8 +274,11 @@ const Store = (() => {
     save();
   }
   function slimFood(f) {
-    const { id, source, barcode, name, cofidName, brand, quantity, servingG, servingLabel, image, kcal, protein, carbs, fat, sugars, satFat, fibre, salt, unitName, unitG } = f;
-    return { id, source, barcode, name, cofidName, brand, quantity, servingG, servingLabel, image, kcal, protein, carbs, fat, sugars, satFat, fibre, salt, unitName, unitG };
+    const { id, source, barcode, name, cofidName, brand, quantity, servingG, servingLabel, image, kcal, protein, carbs, fat, sugars, satFat, fibre, salt, unitName, unitG, alcohol, polyols, fixes } = f;
+    const out = { id, source, barcode, name, cofidName, brand, quantity, servingG, servingLabel, image, kcal, protein, carbs, fat, sugars, satFat, fibre, salt, unitName, unitG };
+    // 1.31.0: only when present, so older snapshots keep exactly the same shape
+    if (alcohol != null) out.alcohol = alcohol; if (polyols != null) out.polyols = polyols; if (fixes) out.fixes = fixes;
+    return out;
   }
   function toggleFavourite(food) {
     const i = state.favourites.findIndex((f) => f.id === food.id);
@@ -300,6 +306,45 @@ const Store = (() => {
     return r;
   }
   function deleteRecipe(id) { state.recipes = state.recipes.filter((f) => f.id !== id); save(); }
+
+  /* ---- Product corrections (1.31.0) ----
+     A wrong Open Food Facts product is replaced on this phone by a corrected copy saved as one of My foods (same
+     barcode, `fixes` = the product's id). Scanning, barcode search and product results then use the copy, and every
+     earlier diary entry, Recent and remembered pick of that product is switched to it (owner's choice: correct old
+     entries). A safety copy of everything is saved and read back FIRST; if that fails nothing is changed. */
+  const sameProduct = (f, bad) => !!f && f.source === 'off' && (f.id === bad.id || (!!bad.barcode && f.barcode === bad.barcode));
+  async function applyProductFix(bad, fixed) {
+    await putSafetyCopy(SAFETY_FIX, JSON.stringify(state)); // throws → caller reports it, nothing changed
+    const food = saveCustomFood(Object.assign(fixed, { fixes: bad.id, barcode: fixed.barcode || bad.barcode || '' }));
+    const slim = slimFood(food);
+    let entriesFixed = 0;
+    for (const list of Object.values(state.diary)) for (const e of list) {
+      if (e.quick || !sameProduct(e.food, bad)) continue;
+      const t = typeof Nutrition !== 'undefined' ? Nutrition.scale(food, e.grams) : null;
+      e.food = JSON.parse(JSON.stringify(slim));
+      if (t) Object.assign(e, t);
+      entriesFixed++;
+    }
+    state.recents = state.recents.map((f) => (sameProduct(f, bad) ? JSON.parse(JSON.stringify(slim)) : f))
+      .filter((f, i, a) => a.findIndex((x) => x.id === f.id) === i);
+    for (const k of Object.keys(state.picks || {})) if (sameProduct(state.picks[k], bad)) state.picks[k] = JSON.parse(JSON.stringify(slim));
+    if (bad.barcode) delete state.cache[bad.barcode];
+    save();
+    return { food, entriesFixed };
+  }
+  function markProductOk(food) {
+    const key = food.barcode || food.id; if (!key) return;
+    state.productsOk[key] = true;
+    const keys = Object.keys(state.productsOk);
+    if (keys.length > 500) keys.slice(0, keys.length - 500).forEach((x) => delete state.productsOk[x]);
+    save();
+  }
+  const productOk = (food) => !!(food && state.productsOk && state.productsOk[food.barcode || food.id]);
+  // The corrected copy for an Open Food Facts product, if one was saved (by barcode or by the product's id).
+  function correctionFor(food) {
+    if (!food || food.source !== 'off') return null;
+    return state.customFoods.find((c) => c.fixes === food.id || (!!food.barcode && c.barcode === food.barcode)) || null;
+  }
 
   /* ---- Recipe categories (1.25.0). A recipe has at most one: recipe.categoryId. ---- */
   const sortCats = () => state.recipeCategories.sort((a, b) => a.name.localeCompare(b.name, 'en-GB', { sensitivity: 'base' }));
@@ -403,7 +448,7 @@ const Store = (() => {
     try { for (const [k] of await kvPrefix('photo:')) await kvDel(k); for (const [k] of await kvPrefix('safety:')) await kvDel(k); } catch (e) { console.warn(e); }
   }
   // Safety copies (for "download the copy saved before…")
-  async function safetyCopy(which) { const v = await kvGet({ restore: SAFETY_RESTORE, weekly: SAFETY_WEEKLY, 'weekly-prev': SAFETY_WEEKLY_PREV }[which] || SAFETY_UPGRADE); return v || null; }
+  async function safetyCopy(which) { const v = await kvGet({ restore: SAFETY_RESTORE, weekly: SAFETY_WEEKLY, 'weekly-prev': SAFETY_WEEKLY_PREV, correction: SAFETY_FIX }[which] || SAFETY_UPGRADE); return v || null; }
 
   // Ask the browser not to clear this app's storage when the phone runs low on space.
   async function protectStorage() {
@@ -443,7 +488,7 @@ const Store = (() => {
     get state() { return state; }, save, kvGet, kvSet,
     entries, addEntry, updateEntry, removeEntry,
     pushRecent, toggleFavourite, isFavourite, slimFood,
-    saveCustomFood, deleteCustomFood, saveRecipe, deleteRecipe, addRecipeCategory, renameRecipeCategory, deleteRecipeCategory, recipeCategory, WATER_STEP, waterFor, addWater,
+    saveCustomFood, deleteCustomFood, applyProductFix, markProductOk, productOk, correctionFor, saveRecipe, deleteRecipe, addRecipeCategory, renameRecipeCategory, deleteRecipeCategory, recipeCategory, WATER_STEP, waterFor, addWater,
     logWeight, setStartWeight, latestWeight, exportJSON, saveDraft, clearDraft, pickKey, rememberPick, pickFor, importJSON, reset, uid,
     upgrade, loadPhotos, photoSrc, putPhoto, counts, safetyCopy, weeklyCopy, protectStorage, storageProtected, flush, DATA_VERSION
   };

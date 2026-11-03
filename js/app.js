@@ -10,7 +10,7 @@ const UI = (() => {
   const DF = {};
   const fmtDateOpts = (date, opts) => { const k = JSON.stringify(opts); return (DF[k] || (DF[k] = new Intl.DateTimeFormat('en-GB', opts))).format(date); };
 
-  const APP_VERSION = '1.30.1';
+  const APP_VERSION = '1.31.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -443,7 +443,7 @@ const UI = (() => {
           <p><span class="badge ${esc(food.source)}">${src}</span>${food.barcode ? '<span class="muted small">' + esc(food.barcode) + '</span>' : ''}</p>
         </div>
       </div>
-
+      ${issueHTML(food)}
       ${portion ? `<div class="chips mode-chips"><button class="chip ${mode === 'unit' ? 'active' : ''}" data-mode="unit">By ${esc(portion.plural)}</button><button class="chip ${mode === 'grams' ? 'active' : ''}" data-mode="grams">By ${gUnit === 'ml' ? 'ml' : 'grams'}</button></div>` : ''}
 
       <div class="amount2">
@@ -517,6 +517,7 @@ const UI = (() => {
       gIn.value = mode === 'unit' ? portion.g : 100; qIn.value = 1; update();
     }));
     if (onBack) $('#backBtn').addEventListener('click', () => onBack());
+    bindIssue(food, { entry, onAdd, onBack, fromQuery });
     if (isEdit) $('#deleteEntry').addEventListener('click', () => { Store.removeEntry(currentDate, entry.id); closeSheet(); renderToday(); toast('Removed'); });
     // Copies the amount shown (so it can be tweaked first); the entry on the viewed day is left as it was.
     if ($('#copyToday')) $('#copyToday').addEventListener('click', () => { if (qty * sizeG <= 0) return toast('Enter an amount'); copyToToday(entry, buildEntry()); closeSheet(); });
@@ -536,6 +537,57 @@ const UI = (() => {
       if (isEdit) { Store.updateEntry(currentDate, entry.id, { grams: e.grams, qty: e.qty, sizeG: e.sizeG, unit: e.unit, unitPlural: e.unitPlural, liquid: e.liquid, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat }); closeSheet(); renderToday(); toast('Updated'); return; }
       logWithDayGuard((dk) => { Store.addEntry(dk, e); if (fromQuery) Store.rememberPick(fromQuery, food); toast(`Added ${fmt(e.kcal)} kcal to ${dateLabel(dk).toLowerCase()}`); currentDate = dk; goto('today'); });
     });
+  }
+
+  /* ----- Wrong product data (1.31.0) ----- */
+  function issueHTML(food) {
+    const x = dataIssue(food); if (!x) return '';
+    const msg = x.kind === 'kj'
+      ? `Listed as <b>${fmt(x.listed)} kcal</b> per 100 g, but its protein, carbs and fat only add up to about <b>${fmt(x.fromMacros)} kcal</b>. It looks like the kJ figure was typed into the kcal box (${fmt(x.listed)} kJ = ${fmt(x.suggest)} kcal).`
+      : x.kind === 'impossible'
+        ? `Listed as <b>${fmt(x.listed)} kcal</b> per 100 g with ${fmt((food.protein || 0) + (food.carbs || 0) + (food.fat || 0), 1)} g of protein, carbs and fat – no food can have that, so something was typed in wrongly.`
+        : `Listed as <b>${fmt(x.listed)} kcal</b> per 100 g, but its protein, carbs and fat add up to about <b>${fmt(x.fromMacros)} kcal</b>. One of these numbers was typed in wrongly on Open Food Facts.`;
+    return `<div class="data-warn" id="dataWarn">
+      <div class="data-warn-title">⚠️ These numbers look wrong</div>
+      <p>${msg}</p>
+      <p class="muted small">Correcting it saves the right numbers on this phone, used from now on and in your earlier diary entries of it.</p>
+      <div class="day-guard">
+        <button class="btn primary block" id="fixLabel">📷 Correct from the label</button>
+        ${x.suggest ? `<button class="btn outline block" id="fixMacros">No label – use ${fmt(x.suggest)} kcal</button>` : ''}
+        <button class="btn text-btn block" id="fixKeep">The numbers are right – keep them</button>
+      </div></div>`;
+  }
+  function bindIssue(food, opts) {
+    if (!$('#dataWarn')) return;
+    const x = dataIssue(food);
+    const reopen = (f, entry) => openFoodSheet(f, Object.assign({}, opts, { entry }));
+    $('#fixLabel').addEventListener('click', () => openCustomFoodSheet(fixSeed(food), { fixes: food, entry: opts.entry, after: (f, entry) => reopen(f, entry) }));
+    if ($('#fixMacros')) $('#fixMacros').addEventListener('click', async () => {
+      const r = await correctProduct(food, Object.assign(fixSeed(food), { kcal: x.suggest }), opts.entry);
+      if (r) reopen(r.food, r.entry);
+    });
+    $('#fixKeep').addEventListener('click', () => { Store.markProductOk(food); toast('OK – kept as it is'); reopen(food, opts.entry); });
+  }
+  // The corrected copy starts from the product as it is (photo, size, serving), as one of My foods.
+  function fixSeed(food) {
+    const keep = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    return { name: food.name, brand: food.brand || '', barcode: food.barcode || '', quantity: food.quantity || '', servingG: keep(food.servingG), servingLabel: food.servingLabel || null,
+      image: food.image || null, kcal: keep(food.kcal), protein: keep(food.protein), carbs: keep(food.carbs), fat: keep(food.fat),
+      sugars: keep(food.sugars), satFat: keep(food.satFat), fibre: keep(food.fibre), salt: keep(food.salt) };
+  }
+  // Saves the corrected copy and updates earlier entries (safety copy first). Returns { food, entry } or null.
+  async function correctProduct(bad, fixed, entry) {
+    try {
+      const { food, entriesFixed } = await Store.applyProductFix(bad, fixed);
+      const updated = entry ? (Store.entries(currentDate).find((e) => e.id === entry.id) || null) : null;
+      renderToday();
+      toast(entriesFixed ? `Corrected – ${entriesFixed} diary entr${entriesFixed === 1 ? 'y' : 'ies'} updated` : 'Corrected – saved to My foods', 4000);
+      return { food, entry: updated };
+    } catch (err) {
+      console.error(err);
+      toast('Couldn\u2019t save a safety copy first, so nothing was changed. Try again.', 5000);
+      return null;
+    }
   }
 
   // Quick add (1.23.0): calories (+ optional macros and name) without looking up a food. Stored as a normal diary
@@ -735,7 +787,8 @@ const UI = (() => {
     if (!localAll.length && fixed) localAll = Sources.searchLocal(fixed);
     const local = localAll.filter(notPick);
     const offAll = offResults.get(q);
-    const off = offAll ? offAll.filter(notPick) : offAll;
+    const localIds = new Set(localAll.map((f) => f.id));
+    const off = offAll ? offAll.filter((f) => notPick(f) && !localIds.has(f.id)) : offAll;
     let html = fixed ? `<div class="inline-note spell-note">No exact match for “${esc(q)}” – showing results for “<b>${esc(fixed)}</b>”.</div>` : '';
     if (pick) html += `<div class="group-title">Your pick last time</div><div class="list">${foodRow(pick)}</div>`;
     if (local.length) html += `<div class="group-title">My foods & recipes</div><div class="list">${local.map(foodRow).join('')}</div>`;
@@ -755,10 +808,18 @@ const UI = (() => {
       ${thumbHTML(f)}
       <div class="item-main">
         <div class="item-title">${esc(f.name)}</div>
-        <div class="item-sub"><span class="badge ${esc(f.source)}">${src}</span>${f.brand ? esc(f.brand) : (f.source === 'cofid' ? groupName(f.group) : '')}${f.quantity ? ' · ' + esc(f.quantity) : ''}</div>
+        <div class="item-sub"><span class="badge ${esc(f.source)}">${src}</span>${dataIssue(f) ? '<span class="badge warn" title="These numbers look wrong">⚠ Check</span>' : ''}${f.brand ? esc(f.brand) : (f.source === 'cofid' ? groupName(f.group) : '')}${f.quantity ? ' · ' + esc(f.quantity) : ''}</div>
       </div>
       <div class="item-kcal"><b>${fmt(f.kcal)}</b><small>kcal/100g</small></div>
     </button>`;
+  }
+  // Product data check (1.31.0): Open Food Facts products whose calories don't fit their protein/carbs/fat.
+  // Not shown once the user has said the numbers are right or saved a corrected copy. Remembered per food object.
+  const issueMemo = new WeakMap();
+  function dataIssue(f) {
+    if (!f || f.source !== 'off' || Store.productOk(f)) return null;
+    if (!issueMemo.has(f)) issueMemo.set(f, Nutrition.checkFood(f));
+    return issueMemo.get(f);
   }
   const foodIndex = new Map();
   function bindFoodRows(onPick) {
@@ -827,12 +888,15 @@ const UI = (() => {
 
 
   /* ===================== CUSTOM FOOD (with label OCR) ===================== */
-  function openCustomFoodSheet(seed) {
+  // opts.fixes (1.31.0): correcting a wrong Open Food Facts product — saved as a corrected copy that replaces it.
+  function openCustomFoodSheet(seed, opts = {}) {
     const f = Object.assign({ name: '', brand: '', barcode: '', kcal: '', protein: '', carbs: '', fat: '', satFat: '', sugars: '', fibre: '', salt: '', servingG: '', image: null }, seed || {});
     const isEdit = !!(seed && seed.id);
+    const fixing = opts.fixes || null;
     const v = (x) => (x === null || x === undefined ? '' : x);
     openSheet(`
-      <div class="sheet-title"><h2>${isEdit ? 'Edit food' : 'New custom food'}</h2><button class="icon-btn" id="closeCF">✕</button></div>
+      <div class="sheet-title"><h2>${fixing ? 'Correct this product' : isEdit ? 'Edit food' : 'New custom food'}</h2><button class="icon-btn" id="closeCF">✕</button></div>
+      ${fixing ? '<div class="inline-note">Copy the <b>per 100 g</b> numbers from the pack\u2019s nutrition label (make sure Energy is the <b>kcal</b> figure, not kJ), or tap Scan nutrition label. The corrected version is used on this phone from now on, and your earlier entries of it are updated.</div>' : ''}
       <div class="row-btns">
         <button class="btn ghost photo-btn" id="labelPhotoBtn" type="button">📷 Scan nutrition label</button>
         <button class="btn ghost photo-btn" id="productPhotoBtn" type="button">📸 Product photo</button>
@@ -910,16 +974,26 @@ const UI = (() => {
     }
     const numv = (id) => { const x = parseFloat($(id).value); return Number.isFinite(x) ? x : null; };
     const keep = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null); // preserve values from label OCR / earlier edits; never store ''
-    $('#cfSave').addEventListener('click', () => {
+    $('#cfSave').addEventListener('click', async () => {
       const name = $('#cfName').value.trim();
       if (!name) return toast('Give the food a name');
       const kcal = numv('#cfKcal');
       if (kcal === null) return toast('Energy (kcal) is required');
-      const food = Store.saveCustomFood({
+      const values = {
         id: f.id, name, brand: $('#cfBrand').value.trim(), barcode: $('#cfBarcode').value.replace(/\D/g, ''),
         kcal, protein: numv('#cfProtein') ?? 0, carbs: numv('#cfCarbs') ?? 0, fat: numv('#cfFat') ?? 0,
         satFat: keep(f.satFat), sugars: keep(f.sugars), fibre: keep(f.fibre), salt: keep(f.salt), servingG: keep(f.servingG), image
-      });
+      };
+      if (fixing) {
+        if (f.quantity) values.quantity = f.quantity;
+        if (f.servingLabel) values.servingLabel = f.servingLabel;
+        $('#cfSave').disabled = true;
+        const r = await correctProduct(fixing, values, opts.entry);
+        $('#cfSave') && ($('#cfSave').disabled = false);
+        if (r) (opts.after || openFoodSheet)(r.food, r.entry);
+        return;
+      }
+      const food = Store.saveCustomFood(values);
       toast(isEdit ? 'Food updated' : 'Food saved');
       openFoodSheet(food);
     });
@@ -1862,6 +1936,7 @@ const UI = (() => {
     const prot = await Store.storageProtected();
     const up = await Store.safetyCopy('upgrade'), rs = await Store.safetyCopy('restore');
     const wk = await Store.safetyCopy('weekly'), wp = await Store.safetyCopy('weekly-prev');
+    const fx = await Store.safetyCopy('correction');
     const when = (x) => fmtDateOpts(new Date(x.savedAt), { day: 'numeric', month: 'short', year: 'numeric' });
     const lb = Store.state.lastBackupAt;
     const age = lb ? Nutrition.daysBetween(Nutrition.dateKey(new Date(lb)), Nutrition.dateKey(new Date())) : null;
@@ -1871,7 +1946,8 @@ const UI = (() => {
       ${wp ? `<button class="link-btn" id="dlWeeklyPrev">Download the previous automatic copy (${when(wp)})</button>` : ''}
       <p class="small muted">${prot === true ? '🔒 Storage protected – the phone won’t clear this app’s data to free up space.' : prot === false ? 'Storage not yet protected – the phone could clear this app’s data if it runs very low on space, so keep regular backups.' : ''}</p>
       ${up ? `<button class="link-btn" id="dlUpgrade">Download the copy saved before the 1.20 upgrade (${when(up)})</button>` : ''}
-      ${rs ? `<button class="link-btn" id="dlRestore">Download the copy saved before your last restore (${when(rs)})</button>` : ''}`;
+      ${rs ? `<button class="link-btn" id="dlRestore">Download the copy saved before your last restore (${when(rs)})</button>` : ''}
+      ${fx ? `<button class="link-btn" id="dlCorrection">Download the copy saved before your last product correction (${when(fx)})</button>` : ''}`;
     const dl = async (which, label) => {
       const c = await Store.safetyCopy(which); if (!c) return;
       const data = JSON.parse(c.data); const photos = {};
@@ -1883,6 +1959,7 @@ const UI = (() => {
     if ($('#dlUpgrade')) $('#dlUpgrade').addEventListener('click', () => dl('upgrade', 'before-1.20-upgrade'));
     if ($('#dlRestore')) $('#dlRestore').addEventListener('click', () => dl('restore', 'before-restore'));
     if ($('#dlWeekly')) $('#dlWeekly').addEventListener('click', () => dl('weekly', 'weekly-copy'));
+    if ($('#dlCorrection')) $('#dlCorrection').addEventListener('click', () => dl('correction', 'before-correction'));
     if ($('#dlWeeklyPrev')) $('#dlWeeklyPrev').addEventListener('click', () => dl('weekly-prev', 'weekly-copy'));
   }
   // Returns true if the file was handed over (share sheet completed, or downloaded); false if cancelled.

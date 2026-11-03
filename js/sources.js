@@ -190,6 +190,9 @@ const Sources = (() => {
   async function lookupBarcode(code) {
     code = String(code).replace(/\D/g, '');
     if (!code) return null;
+    // My foods with this barcode win — including a corrected copy of a wrong product (1.31.0).
+    const mine = Store.state.customFoods.find((f) => f.barcode === code);
+    if (mine) return mine;
     const cached = Store.state.cache[code];
     if (cached && Date.now() - (cached._t || 0) < 1000 * 60 * 60 * 24 * 30) return cached;
     let j = await offFetch(`${OFF_BASE}/api/v2/product/${encodeURIComponent(code)}.json?fields=${FIELDS}`);
@@ -217,8 +220,10 @@ const Sources = (() => {
       fields: FIELDS, sort_by: 'unique_scans_n'
     });
     const j = await offFetch(`${OFF_UK}/cgi/search.pl?${params.toString()}`);
-    const list = (j.products || []).map(Nutrition.fromOFF).filter((f) => f && f.name && f.kcal !== null);
-    return list;
+    const seen = new Set();
+    // A product the user has corrected shows as their corrected copy instead (1.31.0).
+    return (j.products || []).map(Nutrition.fromOFF).filter((f) => f && f.name && f.kcal !== null)
+      .map((f) => Store.correctionFor(f) || f).filter((f) => !seen.has(f.id) && seen.add(f.id));
   }
 
   /* ---------- Unified search ---------- */
