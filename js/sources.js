@@ -181,11 +181,39 @@ const Sources = (() => {
   }
 
   /* ---------- Open Food Facts ---------- */
-  async function offFetch(url) {
-    const r = await fetch(url);
-    if (r.status === 429) throw new Error('Open Food Facts is rate-limiting; wait a moment and try again.');
-    if (!r.ok) throw new Error('Open Food Facts returned ' + r.status);
-    return r.json();
+  // 1.32.0: Open Food Facts' search was down a lot in Nov 2026 (their status page: 71% uptime that week) and the app used to
+  // spin until the browser gave up. Now each try gets OFF_TIMEOUT_MS, a failed try (no answer, timeout, 5xx or an HTML error
+  // page) is retried once after OFF_RETRY_MS, and then a plain message says it's their servers, not the app.
+  // 429 (rate limit: 10 searches/min) is never retried — retrying only makes it worse.
+  const OFF_TIMEOUT_MS = 6000, OFF_RETRY_MS = 1000;
+  const OFF_DOWN = {
+    search: "Open Food Facts' product search isn't responding right now – that's their servers, not the app. UK foods, your own foods and barcode scanning still work; try the search again in a few minutes.",
+    barcode: "Open Food Facts isn't responding right now – that's their servers, not the app. Try again in a few minutes, or create it as your own food from the label."
+  };
+  const OFF_OFFLINE = "You're offline – product search and barcode look-ups need the internet. UK foods and your own foods still work.";
+  const OFF_RATE = 'Open Food Facts is limiting searches (10 a minute) – wait a minute and try again.';
+  const fail = (message, retry) => Object.assign(new Error(message), { retry });
+  async function offFetchOnce(url) {
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), OFF_TIMEOUT_MS) : null;
+    try {
+      let r;
+      try { r = await fetch(url, ctrl ? { signal: ctrl.signal } : undefined); } catch (e) { throw fail('down', true); } // no answer / timed out
+      if (r.status === 429) throw fail(OFF_RATE, false);
+      if (r.status >= 500) throw fail('down', true);
+      if (!r.ok) throw fail('Open Food Facts returned ' + r.status, false);
+      try { return await r.json(); } catch (e) { throw fail('down', true); } // an HTML error page instead of data, or timed out mid-way
+    } finally { if (timer) clearTimeout(timer); }
+  }
+  async function offFetch(url, kind = 'search') {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error(OFF_OFFLINE);
+    for (let attempt = 1; ; attempt++) {
+      try { return await offFetchOnce(url); } catch (err) {
+        if (!err.retry) throw err;
+        if (attempt >= 2) throw new Error(OFF_DOWN[kind] || OFF_DOWN.search);
+        await new Promise((res) => setTimeout(res, OFF_RETRY_MS));
+      }
+    }
   }
   async function lookupBarcode(code) {
     code = String(code).replace(/\D/g, '');
@@ -195,12 +223,12 @@ const Sources = (() => {
     if (mine) return mine;
     const cached = Store.state.cache[code];
     if (cached && Date.now() - (cached._t || 0) < 1000 * 60 * 60 * 24 * 30) return cached;
-    let j = await offFetch(`${OFF_BASE}/api/v2/product/${encodeURIComponent(code)}.json?fields=${FIELDS}`);
+    let j = await offFetch(`${OFF_BASE}/api/v2/product/${encodeURIComponent(code)}.json?fields=${FIELDS}`, 'barcode');
     if ((j.status !== 1 || !j.product) && code.length === 12) {
       // UPC-A scanned; Open Food Facts usually stores it as a 13-digit EAN with a leading zero.
-      j = await offFetch(`${OFF_BASE}/api/v2/product/0${code}.json?fields=${FIELDS}`);
+      j = await offFetch(`${OFF_BASE}/api/v2/product/0${code}.json?fields=${FIELDS}`, 'barcode');
     } else if ((j.status !== 1 || !j.product) && code.length === 13 && code[0] === '0') {
-      j = await offFetch(`${OFF_BASE}/api/v2/product/${code.slice(1)}.json?fields=${FIELDS}`);
+      j = await offFetch(`${OFF_BASE}/api/v2/product/${code.slice(1)}.json?fields=${FIELDS}`, 'barcode');
     }
     if (j.status !== 1 || !j.product) return null;
     const food = Nutrition.fromOFF(j.product);

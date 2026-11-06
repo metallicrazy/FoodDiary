@@ -166,7 +166,7 @@ Photos are never deleted when a food/recipe is removed (old diary entries may st
 
 ## 5. Open Food Facts & CoFID specifics
 
-- OFF: `world.openfoodfacts.org/api/v2/product/{code}.json?fields=…` for barcodes; `uk.openfoodfacts.org/cgi/search.pl?…&json=1` for name search (UK subdomain ranks UK products first). CORS is open; no API key. Licence ODbL — attribution is in the About card and README.
+- OFF: `world.openfoodfacts.org/api/v2/product/{code}.json?fields=…` for barcodes; `uk.openfoodfacts.org/cgi/search.pl?…&json=1` for name search (UK subdomain ranks UK products first). CORS is open; no API key. Licence ODbL — attribution is in the About card and README. **Outages (1.32.0, owner, 6 Nov 2026):** OFF's name search (`cgi/search.pl`) was often down that week (their status page github.com/openfoodfacts/openfoodfacts-upptime: 71.5% 7-day uptime; barcode API 100%). `offFetch` now gives each try 6 s (AbortController), retries once after 1 s on no answer / timeout / 5xx / HTML error page, then says "…isn't responding right now – that's their servers, not the app" (separate wording for barcode look-ups; separate offline message; 429 never retried). Typing waits **1.4 s** after the last key before searching (was 0.7 s; OFF allows 10 searches/min/IP); Enter searches at once. **Don't switch to search.openfoodfacts.org (search-a-licious)**: still beta, its production index was reported frozen at Dec 2024 (search-a-licious#469) and reportedly sends no CORS header — owner agreed to stay on cgi/search.pl. **Live testing:** the owner allowed `*.openfoodfacts.org` in claude.ai Settings → Capabilities, so the workspace can reach OFF (Node needs `NODE_USE_ENV_PROXY=1`); the suite itself never uses the internet.
 - CoFID (McCance & Widdowson 2021, Public Health England, Open Government Licence v3): the workbook's **"1.3 Proximates"** sheet has 3 header rows (names / abbreviations `PROT FAT CHO KCALS KJ TOTSUG AOACFIB SATFOD` / units) then data. `Tr` = trace → 0, `N` = unknown → null. `tools/build_cofid.py` and `Nutrition.parseCofidRows` both locate columns by abbreviation first, header name second. Food group letter → friendly name map (`COFID_GROUPS`) lives in `app.js`.
 - The build environment used so far **cannot download binary files from the internet**; the spreadsheet was obtained by the owner saving it to OneDrive. Keep `data/cofid.json` in the repo so no device ever needs to import it.
 
@@ -205,7 +205,7 @@ Photos are never deleted when a food/recipe is removed (old diary entries may st
 - `core/smoke` · `data/upgrade-real-backup`, `data/upgrade-failures` (injected failures, year of data)
 - `today/portions-and-day-guard`, `today/journey-and-recipe-photo`, `today/water`, `today/copy-to-today`, `today/day-swipe`, `today/long-press-delete` (backup: off by default, switch, ±250, viewed day, graph, backup/restore, Android colour)
 - `add/product-check` (1.31.0 wrong product data: the check, warning, label/kcal/keep, earlier entries + Recents + picks corrected, safety copy and its failure, barcode/search use the corrected copy; owner's backup counts only)
-- `add/page-layout-and-photos`, `add/plain-names`, `add/quick-add-spelling-backup-reminder`, `add/speed-search-saves-charts`, `add/scanner` (run twice: Android native engine and iPhone ZXing engine — different code paths)
+- `add/page-layout-and-photos`, `add/plain-names`, `add/quick-add-spelling-backup-reminder`, `add/speed-search-saves-charts`, `add/scanner` (run twice: Android native engine and iPhone ZXing engine — different code paths), `add/search-outage` (1.32.0: OFF replaced by a stand-in that hangs / 503s / sends HTML / 429s / goes offline, real timings, ~24 s)
 - `recipes/cooked-weight` (backup: automatic vs typed cooked weight, scaling, note, save/reopen), `recipes/editor-typing`, `recipes/drafts-and-picks`, `recipes/view-and-panels`, `recipes/delete-unsaved`, `recipes/categories`, `recipes/sharing`, `recipes/builder-stays-open` (guards the tester's "builder closes while searching ingredients" bug, with slow product results)
 - `progress/real-burn`, `progress/bmi-and-layout` (BMI for every height 140–210 cm × weight 40–160 kg)
 - `offline/product-pictures`, `offline/caches-across-updates` (run the real `sw.js` in a simulated service worker)
@@ -255,6 +255,7 @@ Deliberately excluded: streaks/gamification, micronutrient tracking.
 
 ## 12. Changelog (one line per release; newest first)
 
+- **1.32.0** — Product search copes with Open Food Facts outages: gives up after ~13 s (6 s, one retry) with a clear "their servers, not the app" message instead of spinning; waits 1.4 s after typing before searching.
 - **1.31.0** — Wrong product numbers spotted (e.g. kJ typed as kcal): "⚠ Check" badge and a warning with Correct from the label / use the suggested kcal / keep them; the corrected version replaces the product on this phone and earlier diary entries are updated (safety copy first).
 - **1.30.1** — Undo button in the delete message readable in dark mode (darker green).
 - **1.30.0** — Long-press an item on today → red Delete, with a 5-second Undo.

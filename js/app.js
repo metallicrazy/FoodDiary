@@ -10,7 +10,7 @@ const UI = (() => {
   const DF = {};
   const fmtDateOpts = (date, opts) => { const k = JSON.stringify(opts); return (DF[k] || (DF[k] = new Intl.DateTimeFormat('en-GB', opts))).format(date); };
 
-  const APP_VERSION = '1.31.0';
+  const APP_VERSION = '1.32.0';
 
   const CDN = {
     chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
@@ -677,7 +677,8 @@ const UI = (() => {
     if (!q) return renderIdle();
     // Local sources update instantly; Open Food Facts search waits for a pause (rate-limited API).
     renderResults(q, { offPending: q.length >= 3 && !offResults.has(q) });
-    if (q.length >= 3 && !offResults.has(q)) debounce = setTimeout(() => runSearch(q), 700);
+    // 1.32.0: wait 1.4 s after the last key (was 0.7 s) – Open Food Facts allows only 10 searches a minute. Enter searches at once.
+    if (q.length >= 3 && !offResults.has(q)) debounce = setTimeout(() => runSearch(q), 1400);
   });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(debounce); runSearch(input.value.trim()); input.blur(); } });
   $('#clearSearch').addEventListener('click', () => { input.value = ''; lastQuery = ''; $('#clearSearch').classList.add('hidden'); renderAdd(); input.focus(); });
